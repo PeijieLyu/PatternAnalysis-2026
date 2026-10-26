@@ -36,7 +36,19 @@ class HipMRI2DDataset(Dataset):
     def __getitem__(self, index):
         image_path, mask_path = self.pairs[index]
         image = torch.tensor(nib.load(str(image_path)).get_fdata(), dtype=torch.float32)
-        mask = torch.tensor(nib.load(str(mask_path)).get_fdata(), dtype=torch.long)
+        mask = torch.tensor(
+            nib.load(str(mask_path)).get_fdata(), dtype=torch.float64
+        )
+
+        if not torch.isfinite(mask).all():
+            raise ValueError(f"Mask contains NaN or Inf: {mask_path}")
+        if not (mask == mask.round()).all():
+            raise ValueError(f"Mask contains non-integer labels: {mask_path}")
+        if not ((mask >= 0) & (mask <= 5)).all():
+            raise ValueError(f"Mask labels must be in range 0-5: {mask_path}")
+
+        mask = mask.long()
+
         if image.ndim != 2:
             raise ValueError(
                 f"Expected a 2D image, got shape {tuple(image.shape)}: {image_path}"
