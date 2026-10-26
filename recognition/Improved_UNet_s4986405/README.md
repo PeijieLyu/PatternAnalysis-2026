@@ -150,3 +150,33 @@ logits with shape `[1, 6, 256, 128]` in a separate integration check.
 
 The baseline is untrained. GPU compatibility remains unverified; CPU
 backward checks on login0 reported a CUDA driver compatibility warning.
+
+## Segmentation metrics and pipeline smoke check
+
+`metrics.py` computes per-class Dice and IoU from a pixel confusion matrix.
+Rows represent target classes; columns represent predicted classes.
+
+- Predictions and targets use integer label IDs (`torch.long`).
+- Confusion matrices are summed across processed batches before computing
+  metrics, rather than averaging per-slice scores.
+- A class absent from both prediction and target receives NaN.
+- A class present on only one side receives zero.
+- Results include all six classes; no class average is computed.
+
+Run a small end-to-end CPU check from the project directory:
+
+```bash
+python check_pipeline.py \
+  --image-dir /home/groups/comp3710/HipMRI_Study_open/keras_slices_data/keras_slices_train \
+  --mask-dir /home/groups/comp3710/HipMRI_Study_open/keras_slices_data/keras_slices_seg_train \
+  --batch-size 2 \
+  --max-batches 1
+```
+
+The script connects Dataset, DataLoader, UNet2D, argmax predictions, and
+metrics. It defaults to base channel width 4 and a randomly initialized
+model. It does not load a checkpoint or update parameters.
+
+The Rangpur check processed two real slices and counted 65,536 pixels.
+This validates pipeline execution on that subset, not segmentation quality
+or the contents of the full dataset.
