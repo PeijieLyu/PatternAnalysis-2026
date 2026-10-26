@@ -36,6 +36,9 @@ class HipMRI2DDataset(Dataset):
     def __getitem__(self, index):
         image_path, mask_path = self.pairs[index]
         image = torch.tensor(nib.load(str(image_path)).get_fdata(), dtype=torch.float32)
+        if not torch.isfinite(image).all():
+            raise ValueError(f"Image contains NaN or Inf: {image_path}")
+
         mask = torch.tensor(
             nib.load(str(mask_path)).get_fdata(), dtype=torch.float64
         )

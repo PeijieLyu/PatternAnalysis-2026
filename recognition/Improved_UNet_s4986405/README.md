@@ -40,8 +40,9 @@ image, mask = dataset[0]
 ### Input checks
 
 The Dataset rejects missing directories, empty image sets, missing paired
-masks, non-2D inputs, and image/mask shape mismatches. Mask values must be
-finite integers in the range 0 through 5.
+masks, non-2D inputs, and image/mask shape mismatches.
+MRI values must be finite. Mask values must be finite integers in the
+range 0 through 5.
 
 ### Validation completed
 
