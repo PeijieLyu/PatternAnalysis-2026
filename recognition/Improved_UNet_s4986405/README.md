@@ -56,8 +56,8 @@ range 0 through 5.
 
 These checks do not constitute a full scan of all training image/mask contents.
 
-Optional per-slice MRI normalization is available. Augmentation, one-hot
-encoding, class weighting, and training logic are not implemented.
+Optional per-slice MRI normalization and six-channel one-hot masks are
+available. Augmentation, class weighting, and training logic are not implemented.
 
 ## Runtime dependencies and inspection tools
 
@@ -249,8 +249,8 @@ An imaging specialist needs an offline prototype that drafts pelvic contours for
 
 ### Scope, model choice and course concepts
 
-Use the supplied HipMRI 2D slices and six label IDs, targeting the Normal difficulty option. Keep the implemented U-Net [1] as baseline. The proposed Improved model will adapt residual context blocks and multi-scale segmentation supervision from Isensee et al. [2]. Their original network processes 3D brain MRI; the 2D adaptation and deviations will be documented. Convolutions, skip/residual connections and overlap-based objectives connect the design to course concepts. Both models will share preprocessing, loss, splits and a matched training budget. Optional per-slice MRI z-score normalization is available. Shared training
-pipeline integration, six-channel one-hot targets and paired train-only
+Use the supplied HipMRI 2D slices and six label IDs, targeting the Normal difficulty option. Keep the implemented U-Net [1] as baseline. The proposed Improved model will adapt residual context blocks and multi-scale segmentation supervision from Isensee et al. [2]. Their original network processes 3D brain MRI; the 2D adaptation and deviations will be documented. Convolutions, skip/residual connections and overlap-based objectives connect the design to course concepts. Both models will share preprocessing, loss, splits and a matched training budget. Optional per-slice MRI z-score normalization and six-channel one-hot targets
+are available. Shared training pipeline integration and paired train-only
 augmentation remain to be implemented.
 
 ### Preliminary evidence already obtained
@@ -375,3 +375,37 @@ also passed shape and dtype checks.
 Normalization is currently enabled explicitly through the Dataset option
 or `check_dataset.py --normalize`. The existing pipeline smoke script
 continues to use the default raw-image setting.
+
+### Optional six-channel one-hot masks
+
+The Dataset defaults to `one_hot=False`, returning integer labels with shape
+`[H, W]` and dtype `torch.long`. Set `one_hot=True` to return a float32 mask
+with shape `[6, H, W]`. Channel k represents numerical label ID k (0 through 5).
+All six channels are retained when some classes are absent from a slice.
+Anatomical names for these numerical IDs remain unverified.
+
+Each pixel has exactly one active channel. Taking `argmax(dim=0)` on a single
+encoded mask recovers the integer labels exactly. MRI values are unaffected
+by the encoding option. `normalize=True` and `one_hot=True` can be used together.
+Existing mask validation runs before encoding, so invalid labels are rejected.
+
+```python
+from dataset import HipMRI2DDataset
+
+dataset = HipMRI2DDataset(image_dir, mask_dir, normalize=True, one_hot=True)
+image, target = dataset[0]
+```
+
+Run the synthetic regression tests from the project directory:
+
+```bash
+python -m unittest -v test_one_hot
+```
+
+All three test methods passed on Rangpur CPU. They cover spatial alignment,
+optional normalization, fixed channels for absent classes, batching and rejection
+of invalid masks. A separate check on two real training slices produced targets
+of shape `[2, 6, 256, 128]` with dtype float32. Every pixel had one active channel,
+argmax recovered the original masks exactly, and the normalized images matched
+those loaded with integer targets. These checks validate encoding correctness;
+they do not measure segmentation accuracy.
