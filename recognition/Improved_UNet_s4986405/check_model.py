@@ -4,7 +4,7 @@ import argparse
 
 import torch
 
-from model import UNet2D
+from modules import UNet2D
 
 
 def main():

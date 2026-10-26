@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 
 from dataset import HipMRI2DDataset
 from metrics import confusion_matrix, dice_iou_from_confusion
-from model import UNet2D
+from modules import UNet2D
 
 
 def main():

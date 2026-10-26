@@ -121,7 +121,7 @@ they do not validate every image in the dataset.
 
 ## Baseline UNet2D
 
-`model.py` provides a four-level baseline U-Net built from `DoubleConv`,
+`modules.py` provides a four-level baseline U-Net built from `DoubleConv`,
 `Down`, and `Up` blocks.
 
 - Defaults: 1 input channel, 6 output classes, base channel width 16.
