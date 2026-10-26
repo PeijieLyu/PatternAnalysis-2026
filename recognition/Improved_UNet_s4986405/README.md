@@ -58,7 +58,8 @@ These checks do not constitute a full scan of all training image/mask contents.
 
 Optional per-slice MRI normalization and six-channel one-hot masks are
 available. Optional paired training augmentation is also available.
-Class weighting and training logic are not implemented.
+Class weighting and the full training/validation workflow are not implemented.
+A single-step CPU optimizer check is available.
 
 ## Runtime dependencies and inspection tools
 
@@ -449,3 +450,48 @@ tests and three one-hot tests. They verify both random branches, image-mask
 alignment, the training guard, disabled augmentation using no random draw,
 normalized one-hot batches, seed reproducibility, missing classes and invalid
 mask rejection. This check does not establish a segmentation accuracy benefit.
+
+### Shared segmentation loss and CPU training-step check
+
+`losses.py` defines `dice_ce_loss(logits, targets)`. This project uses an
+unweighted sum of pixel cross-entropy and soft Dice loss as a shared objective
+for the planned baseline/improved comparison. This is an implementation choice.
+
+Both tensors have shape `[B, C, H, W]` (C=6 for this project). Logits are raw
+floating-point scores; targets are float one-hot masks with exactly one active
+channel per pixel. Shape, device, finite values and target validity are checked.
+
+Cross-entropy is averaged over all batch pixels. For each channel, soft Dice
+pools predicted probabilities and targets across batch and spatial dimensions:
+
+`Dice_c = (2 * sum(probability_c * target_c) + 1e-5) / (sum(probability_c) + sum(target_c) + 1e-5)`
+
+`Loss = CrossEntropy + 1 - mean(Dice_c)`
+
+Every channel, including numerical label 0, contributes equally to the Dice
+average. There are no class weights. Softmax/log-softmax are calculated inside
+the loss. Float16/bfloat16 inputs are promoted to float32; float64 logits retain
+float64 calculation. The differentiable soft Dice objective is separate from
+the hard-label Dice/IoU reporting metrics and their jointly-absent-class NaN policy.
+
+```bash
+python -m unittest -v test_losses
+python check_training_step.py
+```
+
+All six loss test methods passed on Rangpur CPU. Checks cover a hand-calculated
+uniform prediction, correct versus incorrect predictions, large finite logits
+and gradients, joint channel permutations, invalid inputs and a U-Net optimizer
+update on synthetic data.
+
+The separate training-step smoke check loaded two real training slices with
+normalization, paired augmentation and one-hot targets, then ran a base-width-4
+U-Net and one Adam step on CPU. Image shape was `[2, 1, 256, 128]`; targets were
+`[2, 6, 256, 128]`. One observed pre-update loss was approximately 3.03997.
+Finite gradients, finite updated parameters and a parameter change were verified.
+
+The script defaults to the Rangpur teaching dataset; use `--data-root` to select
+another directory containing the training image and mask folders. It saves no
+checkpoint and reports no segmentation accuracy. CPU backward emitted a CUDA
+driver warning, but both checks completed successfully. GPU runtime compatibility
+remains unverified.
