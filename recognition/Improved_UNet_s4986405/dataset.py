@@ -37,4 +37,19 @@ class HipMRI2DDataset(Dataset):
         image_path, mask_path = self.pairs[index]
         image = torch.tensor(nib.load(str(image_path)).get_fdata(), dtype=torch.float32)
         mask = torch.tensor(nib.load(str(mask_path)).get_fdata(), dtype=torch.long)
+        if image.ndim != 2:
+            raise ValueError(
+                f"Expected a 2D image, got shape {tuple(image.shape)}: {image_path}"
+            )
+        if mask.ndim != 2:
+            raise ValueError(
+                f"Expected a 2D mask, got shape {tuple(mask.shape)}: {mask_path}"
+            )
+        if image.shape != mask.shape:
+            raise ValueError(
+                f"Image/mask shape mismatch: "
+                f"{tuple(image.shape)} vs {tuple(mask.shape)}; "
+                f"image={image_path}, mask={mask_path}"
+            )
+
         return image.unsqueeze(0), mask
