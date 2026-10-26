@@ -56,3 +56,64 @@ These checks do not constitute a full scan of all training image/mask contents.
 
 Normalization, augmentation, one-hot encoding, class weighting, and training
 logic are not implemented.
+
+## Runtime dependencies and inspection tools
+
+`requirements.txt` lists the direct third-party runtime dependencies:
+PyTorch, NiBabel, and Matplotlib. Versions are not pinned, and the file does
+not specify a CUDA build.
+
+The existing Rangpur environment used for validation reported:
+- PyTorch: `2.14.0+cu130`
+- NiBabel: `5.4.2`
+- Matplotlib: `3.11.2`
+
+These are observed versions, not a separately validated clean installation.
+
+### Run the inspection tools
+
+On Rangpur, activate the existing environment and run from the directory
+containing the project scripts:
+
+```bash
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate torch
+HIPMRI_DATA=/home/groups/comp3710/HipMRI_Study_open/keras_slices_data
+```
+
+Inspect the first batch:
+
+```bash
+python check_dataset.py \
+  --image-dir "$HIPMRI_DATA/keras_slices_train" \
+  --mask-dir "$HIPMRI_DATA/keras_slices_seg_train" \
+  --batch-size 4
+```
+
+Check patient IDs across all three splits:
+
+```bash
+python check_splits.py \
+  --train-dir "$HIPMRI_DATA/keras_slices_train" \
+  --val-dir "$HIPMRI_DATA/keras_slices_validate" \
+  --test-dir "$HIPMRI_DATA/keras_slices_test"
+```
+
+This script uses only the Python standard library and reads filenames,
+not image contents. The verified split sizes were 31/4/3 patients and
+11,460/660/540 slices, with no shared patient IDs between splits.
+
+Save a side-by-side MRI/mask preview:
+
+```bash
+python visualize_sample.py \
+  --image-dir "$HIPMRI_DATA/keras_slices_train" \
+  --mask-dir "$HIPMRI_DATA/keras_slices_seg_train" \
+  --index 0 \
+  --output /tmp/hipmri_sample_preview.png
+```
+
+Choose a new output filename if the PNG already exists. The visualization
+uses a headless backend and displays array orientation without anatomical
+reorientation. Batch inspection and visualization read selected samples;
+they do not validate every image in the dataset.
