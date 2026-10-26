@@ -1,6 +1,8 @@
 """Building blocks for a 2D U-Net segmentation model."""
 
+import torch
 from torch import nn
+from torch.nn import functional as F
 
 
 class DoubleConv(nn.Module):
@@ -31,3 +33,21 @@ class Down(nn.Module):
 
     def forward(self, x):
         return self.block(x)
+
+
+class Up(nn.Module):
+    """Resize to skip dimensions, concatenate channels, then apply DoubleConv."""
+
+    def __init__(self, in_channels, skip_channels, out_channels):
+        super().__init__()
+        self.conv = DoubleConv(in_channels + skip_channels, out_channels)
+
+    def forward(self, x, skip):
+        x = F.interpolate(
+            x,
+            size=skip.shape[-2:],
+            mode="bilinear",
+            align_corners=False,
+        )
+        x = torch.cat((skip, x), dim=1)
+        return self.conv(x)
