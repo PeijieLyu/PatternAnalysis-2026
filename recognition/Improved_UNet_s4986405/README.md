@@ -118,3 +118,35 @@ Choose a new output filename if the PNG already exists. The visualization
 uses a headless backend and displays array orientation without anatomical
 reorientation. Batch inspection and visualization read selected samples;
 they do not validate every image in the dataset.
+
+## Baseline UNet2D
+
+`model.py` provides a four-level baseline U-Net built from `DoubleConv`,
+`Down`, and `Up` blocks.
+
+- Defaults: 1 input channel, 6 output classes, base channel width 16.
+- Default parameter count: 1,962,422.
+- Input: `[B, 1, H, W]`, with height and width each at least 16.
+- Output: raw logits `[B, 6, H, W]`.
+- Downsampling uses max pooling; upsampling uses bilinear interpolation
+  to match skip feature dimensions before channel concatenation.
+- The output layer is a 1x1 convolution without softmax.
+
+### CPU model smoke checks
+
+Run from the project directory with the Python environment activated:
+
+```bash
+python check_model.py
+python check_model.py --height 31 --width 17 --base-channels 4 --backward
+```
+
+The script uses synthetic inputs and checks output shape and finite values.
+With `--backward`, it also checks input and parameter gradients.
+It does not update parameters or evaluate segmentation accuracy.
+
+Both commands passed on Rangpur. A real HipMRI sample also produced finite
+logits with shape `[1, 6, 256, 128]` in a separate integration check.
+
+The baseline is untrained. GPU compatibility remains unverified; CPU
+backward checks on login0 reported a CUDA driver compatibility warning.
