@@ -57,7 +57,8 @@ range 0 through 5.
 These checks do not constitute a full scan of all training image/mask contents.
 
 Optional per-slice MRI normalization and six-channel one-hot masks are
-available. Augmentation, class weighting, and training logic are not implemented.
+available. Optional paired training augmentation is also available.
+Class weighting and training logic are not implemented.
 
 ## Runtime dependencies and inspection tools
 
@@ -250,8 +251,8 @@ An imaging specialist needs an offline prototype that drafts pelvic contours for
 ### Scope, model choice and course concepts
 
 Use the supplied HipMRI 2D slices and six label IDs, targeting the Normal difficulty option. Keep the implemented U-Net [1] as baseline. The proposed Improved model will adapt residual context blocks and multi-scale segmentation supervision from Isensee et al. [2]. Their original network processes 3D brain MRI; the 2D adaptation and deviations will be documented. Convolutions, skip/residual connections and overlap-based objectives connect the design to course concepts. Both models will share preprocessing, loss, splits and a matched training budget. Optional per-slice MRI z-score normalization and six-channel one-hot targets
-are available. Shared training pipeline integration and paired train-only
-augmentation remain to be implemented.
+are available. Paired horizontal flips are available for training; shared
+training pipeline integration remains to be implemented.
 
 ### Preliminary evidence already obtained
 
@@ -409,3 +410,42 @@ of shape `[2, 6, 256, 128]` with dtype float32. Every pixel had one active chann
 argmax recovered the original masks exactly, and the normalized images matched
 those loaded with integer targets. These checks validate encoding correctness;
 they do not measure segmentation accuracy.
+
+### Paired training augmentation
+
+Set both `training=True` and `augment=True` to enable a random horizontal
+flip with probability 0.5 per sample. Horizontal refers to the last array axis.
+The same random decision is used for the MRI image and its integer mask.
+Flipping preserves spatial dimensions, MRI values and numerical label IDs;
+it requires no spatial interpolation.
+
+The flip runs after input validation and before MRI normalization and one-hot
+encoding. It supports either target representation and either normalization
+setting. Both new options default to False. Requesting `augment=True` without
+`training=True` raises ValueError. Split roles are supplied by the caller;
+they are not inferred from directory names. Keep augmentation disabled for
+validation, test and inference.
+
+```python
+train_dataset = HipMRI2DDataset(
+    train_image_dir, train_mask_dir,
+    normalize=True, one_hot=True, training=True, augment=True,
+)
+val_dataset = HipMRI2DDataset(
+    val_image_dir, val_mask_dir, normalize=True, one_hot=True,
+)
+```
+
+Random decisions use the PyTorch RNG. A fixed `torch.manual_seed(...)` makes
+the tested single-process sample sequence reproducible. Future training code
+must also configure DataLoader shuffling and worker seeds as applicable.
+
+```bash
+python -m unittest -v test_augmentation test_one_hot
+```
+
+All eight synthetic test methods passed on Rangpur CPU: five augmentation
+tests and three one-hot tests. They verify both random branches, image-mask
+alignment, the training guard, disabled augmentation using no random draw,
+normalized one-hot batches, seed reproducibility, missing classes and invalid
+mask rejection. This check does not establish a segmentation accuracy benefit.

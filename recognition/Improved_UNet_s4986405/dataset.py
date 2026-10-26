@@ -10,11 +10,18 @@ from torch.utils.data import Dataset
 class HipMRI2DDataset(Dataset):
     """Pair case_*.nii.gz images with seg_*.nii.gz masks by filename."""
 
-    def __init__(self, image_dir, mask_dir, normalize=False, one_hot=False):
+    def __init__(
+        self, image_dir, mask_dir, normalize=False, one_hot=False,
+        training=False, augment=False,
+    ):
         self.image_dir = Path(image_dir)
         self.mask_dir = Path(mask_dir)
         self.normalize = normalize
         self.one_hot = one_hot
+        if augment and not training:
+            raise ValueError("Augmentation requires training=True")
+        self.training = training
+        self.augment = augment
 
         if not self.image_dir.is_dir():
             raise FileNotFoundError(f"Image directory not found: {self.image_dir}")
@@ -68,6 +75,11 @@ class HipMRI2DDataset(Dataset):
                 f"{tuple(image.shape)} vs {tuple(mask.shape)}; "
                 f"image={image_path}, mask={mask_path}"
             )
+
+        # Apply the same spatial operation before normalization and encoding.
+        if self.augment and torch.rand(()).item() < 0.5:
+            image = torch.flip(image, dims=(-1,))
+            mask = torch.flip(mask, dims=(-1,))
 
         if self.normalize:
             values = image.to(torch.float64)
