@@ -236,3 +236,67 @@ jointly absent classes, batch accumulation, and invalid label inputs.
 
 All five tests passed on Rangpur using CPU tensors. They use synthetic
 labels and do not require HipMRI files or a GPU.
+
+## Feasibility Review
+
+**Project:** HipMRI 2D Improved U-Net | **Student:** s4986405 | **Date:** 26 October 2026
+**Status:** Draft for tutor consultation; compulsory check-off not yet completed.
+
+### User need and engineering dilemma
+
+An imaging specialist needs an offline prototype that drafts pelvic contours for human review. The investigation asks whether a 2D Improved U-Net reduces prostate base/apex and adjacent-organ boundary errors compared with a basic 2D U-Net enough to justify extra memory and inference time. Results will address 2D architectural changes; inter-slice continuity remains a limitation.
+
+### Scope, model choice and course concepts
+
+Use the supplied HipMRI 2D slices and six label IDs, targeting the Normal difficulty option. Keep the implemented U-Net [1] as baseline. The proposed Improved model will adapt residual context blocks and multi-scale segmentation supervision from Isensee et al. [2]. Their original network processes 3D brain MRI; the 2D adaptation and deviations will be documented. Convolutions, skip/residual connections and overlap-based objectives connect the design to course concepts. Both models will share preprocessing, loss, splits and a matched training budget. Normalization, six-channel one-hot targets and paired train-only augmentation remain to be implemented.
+
+### Preliminary evidence already obtained
+
+Filename audits found 31/4/3 patients and 11,460/660/540 slices in train/validation/test, with no shared patient IDs. One real sample loaded as image [1,256,128] and integer mask [256,128]. The untrained baseline has 1,962,422 parameters and produced finite [1,6,256,128] logits. CPU shape/gradient checks, a two-slice pipeline check and five metric regression tests passed. No trained accuracy or GPU performance is established; diagnostic job 700650 was last observed pending.
+
+### Five testable acceptance criteria (proposed)
+
+1. Preserve patient separation and image/mask alignment through preprocessing, demonstrated by split checks, tests and overlays.
+2. Target prostate pooled test Dice >= 0.75; also report all-class Dice/IoU and patient-wise summaries. Confirm primary aggregation with the tutor; freeze it before training.
+3. Compare baseline and Improved models on identical held-out patients; analyse 3-5 actual boundary failures with MRI, ground truth, prediction and false-positive/false-negative overlays.
+4. Proposed resource limits: peak GPU VRAM <= 12 GiB and median model-only inference <= 100 ms per 256x128 slice at batch size 1, after warm-up and CUDA synchronization. Also report per-case runtime. These limits are unmeasured targets.
+5. Record exact dependencies, seeds, configurations and checkpoint selection. Select settings on validation data; use test data only after the experiment protocol is frozen.
+
+### Risks, budget, next experiment and fallback
+
+Key risks are class imbalance, only three test patients, unverified anatomical label-ID mapping/slice ordering, missing 3D context and unresolved GPU compatibility. Verify metadata before prostate/base/apex analysis. Proposed initial budget: two one-hour GPU pilots, then two comparison runs capped at four GPU-hours each. Next: finish check-off, verify CUDA, implement shared preprocessing, then test a tiny training subset before matched experiments. Reduce batch size/channel width if needed. If only baseline is feasible, report the Easy fallback honestly and discuss the revised scope with the tutor.
+
+### References
+
+[1] Ronneberger, Fischer and Brox (2015). *U-Net: Convolutional Networks for Biomedical Image Segmentation*. https://arxiv.org/abs/1505.04597
+
+[2] Isensee et al. (2018). *Brain Tumor Segmentation and Radiomics Survival Prediction: Contribution to the BRATS 2017 Challenge*. https://arxiv.org/abs/1802.10508
+
+Requirements checked against COMP3710/COMP7710 assessment specification v2.5, Sections 2.2 and 3. This review does not constitute tutor approval.
+
+## Artificial Intelligence Usage Disclosure
+
+### Tools and assistance
+
+OpenAI ChatGPT and Codex assisted with substantial code scaffolding and documentation drafts. Assistance covered NIfTI image/mask pairing; the PyTorch Dataset and its validation checks; baseline U-Net components and assembly; Dice/IoU metrics; inspection, visualization and regression-test scripts; Git commands; Conda/Slurm troubleshooting; assessment-requirement review; literature lookup; and drafting this feasibility review and disclosure. The assistance included proposing experiments and acceptance criteria, which remain plans rather than measured results. This disclosure does not assert use of other AI tools that has not been confirmed.
+
+### Verification performed so far
+
+The student ran the suggested commands in the local WSL repository and on Rangpur and shared the resulting terminal output for review with AI assistance. Verification included:
+
+- Checking Git diffs and maintaining progressive, scoped commits.
+- Checking Python or shell syntax for the newly created or modified files.
+- Testing NIfTI filename pairing and loading real samples with expected shapes, dtypes and label ranges.
+- Testing rejection of invalid dimensions, shape mismatches, invalid mask labels and non-finite MRI values using temporary files.
+- Auditing patient IDs across the supplied splits and testing artificial overlap cases.
+- Viewing a real MRI/mask side-by-side PNG.
+- Checking CPU forward shapes and finite gradients for model blocks and the assembled baseline.
+- Checking imports after moving the model to `modules.py`.
+- Comparing metric calculations with hand-worked examples, and running five saved metric regression tests successfully.
+- Running a two-slice end-to-end CPU pipeline check with a matching pixel count.
+
+### Current limits and responsibility
+
+The baseline has not been trained and the Improved model has not been implemented. The target prostate Dice, GPU memory, inference latency and proposed resource budgets have not been demonstrated. The CUDA diagnostic was last observed pending in Slurm; a submitted job is not evidence of GPU compatibility. The anatomical meaning of label IDs must be checked against dataset metadata before prostate-specific reporting. The full dataset contents have not been exhaustively scanned.
+
+The student remains responsible for reviewing, understanding, correcting and explaining the submitted code, references, experimental design and report. The checks above document observed execution and do not establish that every line has received an independent manual audit. This disclosure must be updated as implementation, verification and actual AI use change. The tutor feasibility check-off remains incomplete.
