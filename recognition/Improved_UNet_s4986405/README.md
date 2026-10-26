@@ -180,3 +180,44 @@ model. It does not load a checkpoint or update parameters.
 The Rangpur check processed two real slices and counted 65,536 pixels.
 This validates pipeline execution on that subset, not segmentation quality
 or the contents of the full dataset.
+
+## Rangpur Slurm CUDA diagnostic
+
+`gpu_check.sbatch` requests one A100 GPU for a five-minute diagnostic using
+partition `comp3710` and account `comp3710`.
+
+The script uses `$HOME/miniconda3/envs/torch/bin/python`, reports the node,
+NVIDIA driver information, and PyTorch CUDA build, then checks a small CUDA
+convolution forward/backward operation and finite gradients.
+
+During setup, the partition reported `DefMemPerNode=UNLIMITED` and nodes
+reported `RealMemory=1` to Slurm. The script leaves memory at the partition
+default instead of requesting a fixed 4G.
+
+### Submit and inspect
+
+Run on Rangpur from the directory containing the script:
+
+```bash
+bash -n gpu_check.sbatch
+sbatch gpu_check.sbatch
+```
+
+Submit once and note the returned job ID. Replace JOB_ID below:
+
+```bash
+squeue -j JOB_ID
+sacct -j JOB_ID -X --format=JobID,State,ExitCode,NodeList
+cat gpu-check-JOB_ID.log
+```
+
+Logs are written to the submission directory. The batch job continues
+after SSH disconnects.
+
+Successful validation requires COMPLETED, ExitCode 0:0, and the log message
+`CUDA convolution forward/backward: PASS`. A pending job's ExitCode 0:0
+does not indicate success.
+
+At this setup checkpoint, shell syntax validation passed and diagnostic
+job 700650 was pending with reason Priority after its account and memory
+request were corrected. GPU runtime compatibility remains unverified.
