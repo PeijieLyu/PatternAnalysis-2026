@@ -300,3 +300,41 @@ The student ran the suggested commands in the local WSL repository and on Rangpu
 The baseline has not been trained and the Improved model has not been implemented. The target prostate Dice, GPU memory, inference latency and proposed resource budgets have not been demonstrated. The CUDA diagnostic was last observed pending in Slurm; a submitted job is not evidence of GPU compatibility. The anatomical meaning of label IDs must be checked against dataset metadata before prostate-specific reporting. The full dataset contents have not been exhaustively scanned.
 
 The student remains responsible for reviewing, understanding, correcting and explaining the submitted code, references, experimental design and report. The checks above document observed execution and do not establish that every line has received an independent manual audit. This disclosure must be updated as implementation, verification and actual AI use change. The tutor feasibility check-off remains incomplete.
+
+## Dataset provenance and label semantics
+
+### Data acknowledgement and reference
+
+Data were provided by the HiPMRI Study and accessed through the COMP3710
+teaching copy on UQ Rangpur:
+
+`/home/groups/comp3710/HipMRI_Study_open`
+
+The supplied `data_use_agreement.txt` requests acknowledgement of the data
+and citation of an applicable dataset-related publication.
+
+Dataset-related reference:
+Liu, S., Dowling, J. A., Engstrom, C., Greer, P. B., Crozier, S., and
+Chandra, S. S. (2020). *Manipulating Medical Image Translation with
+Manifold Disentanglement*.
+[Paper](https://arxiv.org/abs/2011.13615).
+
+This reference provides dataset context; its list of anatomical structures
+does not establish the numerical label mapping of the course slice files.
+
+### Label metadata audit
+
+The observed training masks contain integer label IDs 0 through 5.
+Anatomical names for these IDs remain unverified.
+
+On 26 October 2026, headers were inspected for:
+- `seg_004_week_0_slice_0.nii.gz`: shape `[256, 128]`.
+- `B006_Week0_SEMANTIC.nii.gz`: shape `[256, 256, 128]`.
+
+Both sampled headers had empty `descrip`, `aux_file`, and `intent_name`
+fields, intent `none`, and zero extensions. This finding applies to these
+two sampled headers, not an exhaustive metadata audit.
+
+Reports currently use numerical label IDs. Confirm the anatomical mapping
+and any course-specific remapping with the tutor or dataset maintainer,
+then record the source before reporting prostate-specific results.
