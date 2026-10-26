@@ -10,9 +10,10 @@ from torch.utils.data import Dataset
 class HipMRI2DDataset(Dataset):
     """Pair case_*.nii.gz images with seg_*.nii.gz masks by filename."""
 
-    def __init__(self, image_dir, mask_dir):
+    def __init__(self, image_dir, mask_dir, normalize=False):
         self.image_dir = Path(image_dir)
         self.mask_dir = Path(mask_dir)
+        self.normalize = normalize
 
         if not self.image_dir.is_dir():
             raise FileNotFoundError(f"Image directory not found: {self.image_dir}")
@@ -66,5 +67,13 @@ class HipMRI2DDataset(Dataset):
                 f"{tuple(image.shape)} vs {tuple(mask.shape)}; "
                 f"image={image_path}, mask={mask_path}"
             )
+
+        if self.normalize:
+            values = image.to(torch.float64)
+            std = values.std(unbiased=False)
+            if std == 0:
+                image = torch.zeros_like(image)
+            else:
+                image = ((values - values.mean()) / std).to(torch.float32)
 
         return image.unsqueeze(0), mask

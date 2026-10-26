@@ -34,7 +34,8 @@ image, mask = dataset[0]
 - Each image is paired with `seg_*.nii.gz` using the same filename suffix.
 - Images are returned as `torch.float32` tensors with shape `[1, H, W]`.
 - Masks are returned as `torch.long` tensors with shape `[H, W]`.
-- MRI intensity values and valid mask labels are preserved without rescaling.
+- MRI intensity values are preserved when normalize=False (the default).
+Valid mask labels are preserved with either normalization setting.
 - Each slice may contain only a subset of labels 0 through 5.
 
 ### Input checks
@@ -55,8 +56,8 @@ range 0 through 5.
 
 These checks do not constitute a full scan of all training image/mask contents.
 
-Normalization, augmentation, one-hot encoding, class weighting, and training
-logic are not implemented.
+Optional per-slice MRI normalization is available. Augmentation, one-hot
+encoding, class weighting, and training logic are not implemented.
 
 ## Runtime dependencies and inspection tools
 
@@ -248,7 +249,9 @@ An imaging specialist needs an offline prototype that drafts pelvic contours for
 
 ### Scope, model choice and course concepts
 
-Use the supplied HipMRI 2D slices and six label IDs, targeting the Normal difficulty option. Keep the implemented U-Net [1] as baseline. The proposed Improved model will adapt residual context blocks and multi-scale segmentation supervision from Isensee et al. [2]. Their original network processes 3D brain MRI; the 2D adaptation and deviations will be documented. Convolutions, skip/residual connections and overlap-based objectives connect the design to course concepts. Both models will share preprocessing, loss, splits and a matched training budget. Normalization, six-channel one-hot targets and paired train-only augmentation remain to be implemented.
+Use the supplied HipMRI 2D slices and six label IDs, targeting the Normal difficulty option. Keep the implemented U-Net [1] as baseline. The proposed Improved model will adapt residual context blocks and multi-scale segmentation supervision from Isensee et al. [2]. Their original network processes 3D brain MRI; the 2D adaptation and deviations will be documented. Convolutions, skip/residual connections and overlap-based objectives connect the design to course concepts. Both models will share preprocessing, loss, splits and a matched training budget. Optional per-slice MRI z-score normalization is available. Shared training
+pipeline integration, six-channel one-hot targets and paired train-only
+augmentation remain to be implemented.
 
 ### Preliminary evidence already obtained
 
@@ -338,3 +341,37 @@ two sampled headers, not an exhaustive metadata audit.
 Reports currently use numerical label IDs. Confirm the anatomical mapping
 and any course-specific remapping with the tutor or dataset maintainer,
 then record the source before reporting prostate-specific results.
+
+### Optional per-slice MRI normalization
+
+`HipMRI2DDataset(..., normalize=True)` enables z-score normalization
+independently for each MRI slice. The calculation includes every pixel,
+including background, and uses population standard deviation
+(`unbiased=False`). Statistics are computed in float64 and the output
+image remains float32 with shape `[1, H, W]`.
+
+Constant slices return zero-valued images. Integer masks are unchanged.
+The default `normalize=False` preserves the loaded MRI values.
+No dataset-wide statistics are fitted or shared between splits.
+
+Enable normalization in the batch inspection script:
+
+```bash
+python check_dataset.py \
+  --image-dir /path/to/images \
+  --mask-dir /path/to/masks \
+  --batch-size 2 \
+  --normalize
+```
+
+Rangpur CPU checks passed for ordinary, zero, constant, tiny-value and
+large-value synthetic images, including comparison with a NumPy reference.
+The default raw values and mask labels were preserved.
+
+One real training slice had normalized mean approximately -4.66e-9 and
+population standard deviation 1.0. A normalized batch of two real slices
+also passed shape and dtype checks.
+
+Normalization is currently enabled explicitly through the Dataset option
+or `check_dataset.py --normalize`. The existing pipeline smoke script
+continues to use the default raw-image setting.

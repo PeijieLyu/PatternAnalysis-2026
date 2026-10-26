@@ -13,12 +13,16 @@ def main():
     parser.add_argument("--image-dir", required=True)
     parser.add_argument("--mask-dir", required=True)
     parser.add_argument("--batch-size", type=int, default=4)
+    parser.add_argument("--normalize", action="store_true",
+                        help="Apply per-slice MRI z-score normalization")
     args = parser.parse_args()
 
     if args.batch_size < 1:
         parser.error("--batch-size must be positive")
 
-    dataset = HipMRI2DDataset(args.image_dir, args.mask_dir)
+    dataset = HipMRI2DDataset(
+        args.image_dir, args.mask_dir, normalize=args.normalize
+    )
     loader = DataLoader(
         dataset,
         batch_size=args.batch_size,
@@ -27,6 +31,7 @@ def main():
     )
     images, masks = next(iter(loader))
 
+    print("MRI normalization:", "z-score" if args.normalize else "none")
     print("Dataset pairs:", len(dataset))
     print("Image batch shape:", tuple(images.shape))
     print("Image dtype:", images.dtype)
