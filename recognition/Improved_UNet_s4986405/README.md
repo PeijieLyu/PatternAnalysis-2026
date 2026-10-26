@@ -221,3 +221,18 @@ does not indicate success.
 At this setup checkpoint, shell syntax validation passed and diagnostic
 job 700650 was pending with reason Priority after its account and memory
 request were corrected. GPU runtime compatibility remains unverified.
+
+## Metric regression tests
+
+Run from the project directory in an environment with PyTorch installed:
+
+```bash
+python -m unittest -v test_metrics
+```
+
+The five test methods cover perfect predictions, confusion matrix
+orientation, hand-calculated Dice/IoU, missed and falsely predicted classes,
+jointly absent classes, batch accumulation, and invalid label inputs.
+
+All five tests passed on Rangpur using CPU tensors. They use synthetic
+labels and do not require HipMRI files or a GPU.
