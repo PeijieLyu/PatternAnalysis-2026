@@ -153,8 +153,9 @@ Both commands passed on Rangpur. A real HipMRI sample also produced finite
 logits with shape `[1, 6, 256, 128]` in a separate integration check.
 
 Only limited CPU training smoke runs have been completed; no final trained
-baseline has been evaluated. GPU compatibility remains unverified; CPU
-backward checks on login0 reported a CUDA driver compatibility warning.
+baseline has been evaluated. A Slurm CUDA convolution check has passed;
+U-Net GPU training remains unverified. CPU backward checks on login0
+reported a CUDA driver compatibility warning.
 
 ## Segmentation metrics and pipeline smoke check
 
@@ -223,9 +224,10 @@ Successful validation requires COMPLETED, ExitCode 0:0, and the log message
 `CUDA convolution forward/backward: PASS`. A pending job's ExitCode 0:0
 does not indicate success.
 
-At this setup checkpoint, shell syntax validation passed and diagnostic
-job 700650 was pending with reason Priority after its account and memory
-request were corrected. GPU runtime compatibility remains unverified.
+After its account and memory request were corrected, diagnostic job 700650
+completed on a100-1 with state COMPLETED and ExitCode 0:0. Its log reported
+`CUDA convolution forward/backward: PASS`. This verifies the small CUDA
+diagnostic on the allocated node; full-model GPU training remains unverified.
 
 ## Metric regression tests
 
@@ -260,7 +262,7 @@ model remains to be implemented.
 
 ### Preliminary evidence already obtained
 
-Filename audits found 31/4/3 patients and 11,460/660/540 slices in train/validation/test, with no shared patient IDs. One real sample loaded as image [1,256,128] and integer mask [256,128]. The default-width baseline has 1,962,422 parameters; its initial untrained forward check produced finite [1,6,256,128] logits. CPU shape/gradient checks, a two-slice pipeline check and five metric regression tests passed. No trained accuracy or GPU performance is established; diagnostic job 700650 was last observed pending.
+Filename audits found 31/4/3 patients and 11,460/660/540 slices in train/validation/test, with no shared patient IDs. One real sample loaded as image [1,256,128] and integer mask [256,128]. The default-width baseline has 1,962,422 parameters; its initial untrained forward check produced finite [1,6,256,128] logits. CPU shape/gradient checks, a two-slice pipeline check and five metric regression tests passed. No trained accuracy or GPU performance is established. Diagnostic job 700650 completed successfully on an A100; full-model GPU training is still to be validated.
 
 ### Five testable acceptance criteria (proposed)
 
@@ -272,7 +274,7 @@ Filename audits found 31/4/3 patients and 11,460/660/540 slices in train/validat
 
 ### Risks, budget, next experiment and fallback
 
-Key risks are class imbalance, only three test patients, unverified anatomical label-ID mapping/slice ordering, missing 3D context and unresolved GPU compatibility. Verify metadata before prostate/base/apex analysis. Proposed initial budget: two one-hour GPU pilots, then two comparison runs capped at four GPU-hours each. Next: finish check-off, verify CUDA, implement shared preprocessing, then test a tiny training subset before matched experiments. Reduce batch size/channel width if needed. If only baseline is feasible, report the Easy fallback honestly and discuss the revised scope with the tutor.
+Key risks are class imbalance, only three test patients, unverified anatomical label-ID mapping/slice ordering, missing 3D context and unverified full-model GPU training/resource use. Verify metadata before prostate/base/apex analysis. Proposed initial budget: two one-hour GPU pilots, then two comparison runs capped at four GPU-hours each. Next: finish check-off, validate full-model GPU training, implement the Improved model, and run matched experiments using the shared preprocessing. Reduce batch size/channel width if needed. If only baseline is feasible, report the Easy fallback honestly and discuss the revised scope with the tutor.
 
 ### References
 
@@ -286,7 +288,7 @@ Requirements checked against COMP3710/COMP7710 assessment specification v2.5, Se
 
 ### Tools and assistance
 
-OpenAI ChatGPT and Codex assisted with substantial code scaffolding and documentation drafts. Assistance covered NIfTI image/mask pairing; the PyTorch Dataset and its validation checks; baseline U-Net components and assembly; Dice/IoU metrics; inspection, visualization and regression-test scripts; Git commands; Conda/Slurm troubleshooting; assessment-requirement review; literature lookup; and drafting this feasibility review and disclosure. Subsequent assistance also covered optional MRI z-score normalization, six-channel one-hot targets, paired training flips, the Dice/CE loss, training/validation loops, checkpoint and history persistence, and training-curve plotting with their tests. The assistance included proposing experiments and acceptance criteria, which remain plans rather than measured results. This disclosure does not assert use of other AI tools that has not been confirmed.
+OpenAI ChatGPT and Codex assisted with substantial code scaffolding and documentation drafts. Assistance covered NIfTI image/mask pairing; the PyTorch Dataset and its validation checks; baseline U-Net components and assembly; Dice/IoU metrics; inspection, visualization and regression-test scripts; Git commands; Conda/Slurm troubleshooting; assessment-requirement review; literature lookup; and drafting this feasibility review and disclosure. Subsequent assistance also covered optional MRI z-score normalization, six-channel one-hot targets, paired training flips, the Dice/CE loss, training/validation loops, checkpoint and history persistence, training-curve plotting, and checkpoint-based prediction/export with their tests. The assistance included proposing experiments and acceptance criteria, which remain plans rather than measured results. This disclosure does not assert use of other AI tools that has not been confirmed.
 
 ### Verification performed so far
 
@@ -306,10 +308,12 @@ The student ran the suggested commands in the local WSL repository and on Rangpu
 - Running paired-augmentation/one-hot tests (8), loss tests (6), and checkpoint/training-loop tests (9) successfully on CPU.
 - Running a real-data CPU optimizer step and limited two-epoch training/validation check, then checking saved history consistency and model reloading.
 - Running all five history-plot tests successfully and rendering the saved smoke history to a PNG reviewed with AI assistance.
+- Confirming Slurm job 700650 completed with exit code 0:0 and its CUDA convolution forward/backward check passed on an allocated A100 node.
+- Running all five prediction tests successfully, exporting a real validation prediction, and reviewing its aligned numeric-label/TP/FP/FN panels with AI assistance.
 
 ### Current limits and responsibility
 
-The baseline has only undergone limited CPU training smoke runs; a final trained model has not been evaluated. The Improved model has not been implemented. The target prostate Dice, GPU memory, inference latency and proposed resource budgets have not been demonstrated. The CUDA diagnostic was last observed pending in Slurm; a submitted job is not evidence of GPU compatibility. The anatomical meaning of label IDs must be checked against dataset metadata before prostate-specific reporting. The full dataset contents have not been exhaustively scanned.
+The baseline has only undergone limited CPU training smoke runs; a final trained model has not been evaluated. The Improved model has not been implemented. The target prostate Dice, GPU memory, inference latency and proposed resource budgets have not been demonstrated. The Slurm CUDA convolution diagnostic completed successfully on an allocated A100 node; full-model GPU training and profiling remain unverified. The anatomical meaning of label IDs must be checked against dataset metadata before prostate-specific reporting. The full dataset contents have not been exhaustively scanned.
 
 The student remains responsible for reviewing, understanding, correcting and explaining the submitted code, references, experimental design and report. The checks above document observed execution and do not establish that every line has received an independent manual audit. This disclosure must be updated as implementation, verification and actual AI use change. The tutor feasibility check-off remains incomplete.
 
@@ -500,8 +504,8 @@ Finite gradients, finite updated parameters and a parameter change were verified
 The script defaults to the Rangpur teaching dataset; use `--data-root` to select
 another directory containing the training image and mask folders. It saves no
 checkpoint and reports no segmentation accuracy. CPU backward emitted a CUDA
-driver warning, but both checks completed successfully. GPU runtime compatibility
-remains unverified.
+driver warning, but both CPU checks completed successfully. A subsequent Slurm
+CUDA convolution test passed; U-Net GPU training remains unverified.
 
 ### Baseline training and validation loops
 
@@ -552,7 +556,8 @@ training loss was 2.931334 and validation loss was 2.962813. Validation label 5
 had NaN Dice/IoU because it was absent from both predictions and targets in that
 batch. The run ended with `Training/validation run: PASS`. This was one CPU
 training batch followed by one validation batch; no trained checkpoint or final
-accuracy result was produced. GPU compatibility remains unverified.
+accuracy result was produced. The separate Slurm CUDA diagnostic has since
+passed; full-model GPU training remains unverified.
 
 ### Checkpoints and epoch histories
 
@@ -601,7 +606,8 @@ The saved optimizer/RNG states provide the information for adding resume support
 The single-step script `check_training_step.py` still saves no checkpoint.
 Model weight extensions (`*.pt`, `*.pth`, `*.ckpt`) and the project's `/runs/`
 directory are ignored by Git. Runtime outputs should remain outside source
-control. No final segmentation accuracy or GPU compatibility is established.
+control. No final segmentation accuracy or full-model GPU training result is
+established; the separate Slurm CUDA convolution check has passed.
 
 ### Training history plots
 
@@ -637,3 +643,75 @@ CPU smoke history and visually reviewed. Titles, axes and legend were readable;
 validation label 5 was correctly marked undefined throughout. These two epochs
 each used one batch per phase; the figure demonstrates the plotting workflow
 and does not establish convergence or final segmentation quality.
+
+### Completed CUDA diagnostic
+
+On 27 October 2026, Slurm accounting and the saved diagnostic log were checked
+for job 700650. The observed results were:
+
+| Item | Observed result |
+| --- | --- |
+| Slurm state / exit code | COMPLETED / 0:0 |
+| Allocated node | a100-1 |
+| GPU | NVIDIA A100-PCIE-40GB |
+| NVIDIA driver | 590.48.01 |
+| NVIDIA-SMI CUDA version field | 13.1 |
+| PyTorch / PyTorch CUDA build | 2.14.0+cu130 / 13.0 |
+| CUDA availability | True |
+| Convolution forward/backward and finite gradients | PASS |
+
+The CPU login-node warning does not describe this allocated node's successful
+diagnostic. The result establishes this small CUDA operation, not U-Net GPU
+training, peak VRAM, inference latency or segmentation quality. The five-minute
+allocation has ended; subsequent GPU work must obtain a new Slurm allocation.
+
+### Checkpoint-based prediction and aligned exports
+
+`predict.py` loads a baseline UNet2D checkpoint with its saved channel width and
+normalization setting, sets evaluation mode, disables autograd and augmentation,
+and predicts one image/mask pair selected by `--index`. Targets remain integer
+label IDs for metrics. The current script requires paired masks for its
+qualitative/metric export and supports the baseline architecture only.
+
+An existing output directory is rejected. A new output directory receives:
+
+- `prediction.png`: MRI, ground truth, prediction and a selected-label overlap
+  panel. Green denotes TP, red FP and blue FN for the requested numeric label.
+- `prediction.nii.gz`: uint8 numerical labels with the input image's 2D shape
+  and affine. The stored array grid is preserved without transposing/resizing.
+- `prediction.json`: checkpoint epoch/source, partial-run flag, preprocessing,
+  confusion matrix, per-class Dice/IoU and selected-label TP/FP/FN counts.
+  Jointly absent scores are recorded as null.
+
+`--label-id` explicitly selects a numerical ID from 0 through 5. Anatomical
+names remain unverified. A partial checkpoint is refused by default;
+`--allow-partial` explicitly permits a smoke check and both the figure and JSON
+retain that status. It does not turn the checkpoint into a final trained model.
+
+```bash
+python -m unittest -v test_predict
+python predict.py \
+  --checkpoint /path/to/run/best.pt \
+  --image-dir /path/to/validation_images \
+  --mask-dir /path/to/validation_masks \
+  --output-dir /path/to/new_prediction \
+  --index 0 --label-id 1 --device cpu --allow-partial
+```
+
+All five prediction test methods passed on Rangpur CPU. They check checkpoint
+metadata/partial-run guards, saved channel width and inference without gradients,
+a hand-calculated TP/FP/FN map, NIfTI shape/affine/dtype and score consistency,
+PNG rendering, and protection of existing prediction outputs.
+
+A separate real validation check used the epoch-2, base-width-4 partial checkpoint
+on `case_036_week_0_slice_0.nii.gz`. The prediction shape was `[256, 128]` and
+normalization was per-slice z-score. For numerical label 1, the observed counts
+were TP=0, FP=0, FN=23919. Prediction export completed and the downloaded PNG
+was visually reviewed: panels, numeric color scale, partial-checkpoint title
+and blue FN overlay were consistent with the reported result. The prediction
+panel was dominated by label 4. This smoke checkpoint has only two limited CPU
+updates and provides no valid evidence of useful segmentation quality.
+
+NIfTI inputs/outputs (`*.nii`, `*.nii.gz`) are ignored by Git alongside model
+weights. Runtime predictions remain outside the source repository. The held-out
+test split was not used in this prediction check.
