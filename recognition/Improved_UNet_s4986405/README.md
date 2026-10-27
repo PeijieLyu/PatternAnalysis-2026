@@ -286,7 +286,7 @@ Requirements checked against COMP3710/COMP7710 assessment specification v2.5, Se
 
 ### Tools and assistance
 
-OpenAI ChatGPT and Codex assisted with substantial code scaffolding and documentation drafts. Assistance covered NIfTI image/mask pairing; the PyTorch Dataset and its validation checks; baseline U-Net components and assembly; Dice/IoU metrics; inspection, visualization and regression-test scripts; Git commands; Conda/Slurm troubleshooting; assessment-requirement review; literature lookup; and drafting this feasibility review and disclosure. The assistance included proposing experiments and acceptance criteria, which remain plans rather than measured results. This disclosure does not assert use of other AI tools that has not been confirmed.
+OpenAI ChatGPT and Codex assisted with substantial code scaffolding and documentation drafts. Assistance covered NIfTI image/mask pairing; the PyTorch Dataset and its validation checks; baseline U-Net components and assembly; Dice/IoU metrics; inspection, visualization and regression-test scripts; Git commands; Conda/Slurm troubleshooting; assessment-requirement review; literature lookup; and drafting this feasibility review and disclosure. Subsequent assistance also covered optional MRI z-score normalization, six-channel one-hot targets, paired training flips, the Dice/CE loss, training/validation loops, checkpoint and history persistence, and training-curve plotting with their tests. The assistance included proposing experiments and acceptance criteria, which remain plans rather than measured results. This disclosure does not assert use of other AI tools that has not been confirmed.
 
 ### Verification performed so far
 
@@ -302,10 +302,14 @@ The student ran the suggested commands in the local WSL repository and on Rangpu
 - Checking imports after moving the model to `modules.py`.
 - Comparing metric calculations with hand-worked examples, and running five saved metric regression tests successfully.
 - Running a two-slice end-to-end CPU pipeline check with a matching pixel count.
+- Verifying optional normalization and one-hot targets on synthetic inputs and real slices, including exact mask recovery.
+- Running paired-augmentation/one-hot tests (8), loss tests (6), and checkpoint/training-loop tests (9) successfully on CPU.
+- Running a real-data CPU optimizer step and limited two-epoch training/validation check, then checking saved history consistency and model reloading.
+- Running all five history-plot tests successfully and rendering the saved smoke history to a PNG reviewed with AI assistance.
 
 ### Current limits and responsibility
 
-The baseline has not been trained and the Improved model has not been implemented. The target prostate Dice, GPU memory, inference latency and proposed resource budgets have not been demonstrated. The CUDA diagnostic was last observed pending in Slurm; a submitted job is not evidence of GPU compatibility. The anatomical meaning of label IDs must be checked against dataset metadata before prostate-specific reporting. The full dataset contents have not been exhaustively scanned.
+The baseline has only undergone limited CPU training smoke runs; a final trained model has not been evaluated. The Improved model has not been implemented. The target prostate Dice, GPU memory, inference latency and proposed resource budgets have not been demonstrated. The CUDA diagnostic was last observed pending in Slurm; a submitted job is not evidence of GPU compatibility. The anatomical meaning of label IDs must be checked against dataset metadata before prostate-specific reporting. The full dataset contents have not been exhaustively scanned.
 
 The student remains responsible for reviewing, understanding, correcting and explaining the submitted code, references, experimental design and report. The checks above document observed execution and do not establish that every line has received an independent manual audit. This disclosure must be updated as implementation, verification and actual AI use change. The tutor feasibility check-off remains incomplete.
 
@@ -582,7 +586,7 @@ The six checkpoint test methods cover model output equality after reloading,
 restored Adam producing the same next update, validation-only best selection,
 JSON/CSV handling, protection of existing run directories, invalid losses/epoch
 numbers and retained RNG metadata. Together with the three loop tests, the
-combined command runs nine tests.
+combined command runs nine tests; all nine passed on Rangpur CPU.
 
 A two-epoch Rangpur CPU smoke run processed one two-slice training batch and one
 two-slice validation batch per epoch. The latest and best checkpoints both
@@ -598,3 +602,38 @@ The single-step script `check_training_step.py` still saves no checkpoint.
 Model weight extensions (`*.pt`, `*.pth`, `*.ckpt`) and the project's `/runs/`
 directory are ignored by Git. Runtime outputs should remain outside source
 control. No final segmentation accuracy or GPU compatibility is established.
+
+### Training history plots
+
+`plot_history.py` reads the saved `config.json` and `history.json` and exports
+`training_curves.png`. It displays train/validation loss and separate panels
+for train/validation per-class Dice and IoU. Colors consistently represent
+numerical label IDs 0 through 5; no anatomical mapping or class-average metric
+is inferred. Metric axes use the full 0-1 score range.
+
+Curves use raw recorded epoch values without smoothing. JSON null scores are
+converted to missing plot points, preserving gaps instead of inventing zeros.
+A label undefined for every plotted epoch is annotated in that panel.
+The title includes architecture, base channel width and an explicit PARTIAL RUN
+marker whenever the saved configuration reports a batch-limited run.
+
+After a new training loop completes, `train.py` automatically creates the PNG
+in its run directory. Source-file hashes for new runs include `plot_history.py`.
+Existing runs can be plotted separately without loading weights or retraining:
+
+```bash
+python -m unittest -v test_plot_history
+python plot_history.py --run-dir /path/to/run
+```
+
+The output defaults to the run directory. To preserve existing figures, the
+script refuses to overwrite an output file. Use `--output /path/to/new.png`
+when another export is needed. Matplotlib uses the non-interactive Agg backend.
+
+All five plot test methods passed on Rangpur: raw values and null handling,
+invalid histories, missing run-scope metadata, PNG rendering for one/two epochs,
+and existing-output protection. A PNG was also rendered from the real two-epoch
+CPU smoke history and visually reviewed. Titles, axes and legend were readable;
+validation label 5 was correctly marked undefined throughout. These two epochs
+each used one batch per phase; the figure demonstrates the plotting workflow
+and does not establish convergence or final segmentation quality.

@@ -13,6 +13,7 @@ from losses import dice_ce_loss
 from metrics import confusion_matrix, dice_iou_from_confusion
 from modules import UNet2D
 from training_io import RunRecorder, source_hashes
+from plot_history import plot_history
 
 
 def run_epoch(model, loader, device, optimizer=None, max_batches=None):
@@ -166,6 +167,8 @@ def main():
             epoch, model, optimizer, train_result, val_result, generator,
         )
         print(f'Saved epoch {epoch}; best epoch={recorder.best_epoch}; new best={improved}', flush=True)
+    plot_path = plot_history(args.output_dir)
+    print('Saved training curves:', plot_path, flush=True)
     print('Training/validation run: PASS', flush=True)
 
 
