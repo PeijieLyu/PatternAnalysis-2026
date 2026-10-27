@@ -11,6 +11,8 @@ COMP3710 Pattern Recognition Final Project
 
 Both models completed 20 full epochs and three validation passes under protocol `hipmri-2d-comparison-v1` (array 704715). Five pooled numeric-label Dice scores improve with the Improved model, while label 3 declines and the six-label mean is slightly lower. Model-forward time is about 2.80x and allocated training memory about 2.51x the baseline. See [VALIDATION_RESULTS.md](VALIDATION_RESULTS.md) for all class/patient metrics, figures, source hashes and scope. These are validation-only results; anatomical mapping, tutor check-off and final held-out evaluation remain pending. Four actual validation failures and one improvement example have been rendered, checked and discussed in [ERROR_ANALYSIS.md](ERROR_ANALYSIS.md). Earlier bounded checks below are historical evidence.
 
+The fixed-checkpoint test protocol and nine orchestration tests are ready; see [HELDOUT_PROTOCOL.md](HELDOUT_PROTOCOL.md). Actual held-out evaluation remains pending.
+
 ## HipMRI 2D Dataset
 
 `dataset.py` provides `HipMRI2DDataset`, a minimal PyTorch Dataset.
@@ -297,7 +299,7 @@ Requirements checked against COMP3710/COMP7710 assessment specification v2.5, Se
 
 ### Tools and assistance
 
-OpenAI ChatGPT and Codex assisted with substantial code scaffolding and documentation drafts. Assistance covered NIfTI image/mask pairing; the PyTorch Dataset and its validation checks; baseline U-Net components and assembly; Dice/IoU metrics; inspection, visualization and regression-test scripts; Git commands; Conda/Slurm troubleshooting; assessment-requirement review; literature lookup; and drafting this feasibility review and disclosure. Subsequent assistance also covered optional MRI z-score normalization, six-channel one-hot targets, paired training flips, the Dice/CE loss, training/validation loops, checkpoint and history persistence, training-curve plotting, and checkpoint-based prediction/export, and full-model GPU smoke-job/profiling code, native-shape batching, and the paper-inspired 2D Improved model architecture and the shared architecture-selection/checkpoint-loading paths, split evaluation, patient/case metric aggregation, separated inference timing, and the matched experiment protocol/Slurm orchestration and completed-run comparison reporting with their tests. The assistance included proposing experiments and acceptance criteria; the frozen v1 training/validation experiment now has measured results, while prostate-specific held-out acceptance checks remain pending. Four validation failures and one improvement example were subsequently rendered and visually reviewed; their selected scope does not establish anatomical base/apex performance. Subsequent assistance included auditing downloaded saved records, comparing exported CSV/JSON values, reviewing three real-result plots, developing and testing the exploratory validation overlay tool, checking five actual overlays and drafting VALIDATION_RESULTS.md and ERROR_ANALYSIS.md. This disclosure does not assert use of other AI tools that has not been confirmed.
+OpenAI ChatGPT and Codex assisted with substantial code scaffolding and documentation drafts. Assistance covered NIfTI image/mask pairing; the PyTorch Dataset and its validation checks; baseline U-Net components and assembly; Dice/IoU metrics; inspection, visualization and regression-test scripts; Git commands; Conda/Slurm troubleshooting; assessment-requirement review; literature lookup; and drafting this feasibility review and disclosure. Subsequent assistance also covered optional MRI z-score normalization, six-channel one-hot targets, paired training flips, the Dice/CE loss, training/validation loops, checkpoint and history persistence, training-curve plotting, and checkpoint-based prediction/export, and full-model GPU smoke-job/profiling code, native-shape batching, and the paper-inspired 2D Improved model architecture and the shared architecture-selection/checkpoint-loading paths, split evaluation, patient/case metric aggregation, separated inference timing, and the matched experiment protocol/Slurm orchestration and completed-run comparison reporting with their tests. The assistance included proposing experiments and acceptance criteria; the frozen v1 training/validation experiment now has measured results, while prostate-specific held-out acceptance checks remain pending. Four validation failures and one improvement example were subsequently rendered and visually reviewed; their selected scope does not establish anatomical base/apex performance. Subsequent assistance included auditing downloaded saved records, comparing exported CSV/JSON values, reviewing three real-result plots, developing and testing the exploratory validation overlay tool, checking five actual overlays and drafting VALIDATION_RESULTS.md and ERROR_ANALYSIS.md. Assistance subsequently covered the fixed-checkpoint held-out protocol, Slurm runner, provenance/coverage checks and synthetic regression tests; all nine tests and shell syntax checks passed on Rangpur, while actual held-out execution remains pending. This disclosure does not assert use of other AI tools that has not been confirmed.
 
 ### Verification performed so far
 
@@ -331,6 +333,8 @@ The student ran the suggested commands in the local WSL repository and on Rangpu
 - Running all eight comparison-reporting tests on Rangpur, including generation of three PNG figures from synthetic completed-run fixtures. Both formal tasks subsequently completed with exit code 0:0 and final PASS markers. The actual comparison export passed; downloaded saved records and all four CSVs matched recomputation, and three real-result PNGs were visually reviewed with AI assistance.
 
 - Running all eight exploratory error-analysis tests on Rangpur CPU, then rendering five selected real validation examples with the frozen runtime/checkpoints. The downloaded manifest, selected-label counts, source/weight/PNG hashes and native crop bounds were checked; all five figures were visually reviewed with AI assistance.
+
+- Running all nine held-out-orchestration tests on Rangpur, including synthetic plot rendering, and passing Slurm script syntax validation. These tests mock evaluation children and do not read the supplied test split or establish held-out results.
 
 ### Current limits and responsibility
 
@@ -1245,3 +1249,24 @@ forward latency. Node differences and the single training seed limit performance
 comparisons. Real comparison export, record/CSV consistency checks and visual review of
 the three report figures passed; see VALIDATION_RESULTS.md. No
 prostate-specific or held-out result is claimed. Tutor check-off remains pending.
+
+### Frozen fixed-model held-out evaluation
+
+`heldout_protocol.json` and [HELDOUT_PROTOCOL.md](HELDOUT_PROTOCOL.md) fix the
+next evaluation before reading the supplied test split. Both validation-selected
+checkpoints are identified by epoch and SHA256: baseline epoch 9 and Improved
+epoch 20, from runtime commit bc8a6a4688f50770f71de24a56dff8aad43204c7.
+The plan covers all 540 slices / patients 40-42, all numeric IDs 0-5, pooled and
+patient-level metrics, and three full passes per model. One A100 allocation runs
+baseline then Improved in each pass, using the frozen evaluator at batch size 1.
+Models and hyperparameters remain fixed; anatomical mapping is still unverified.
+
+All nine `test_heldout` tests passed on Rangpur CPU on 27 October 2026 (4.002 s),
+including both synthetic figure exports. `bash -n heldout_evaluate.sbatch` passed.
+The tests use temporary synthetic records and mock evaluation child processes;
+they do not establish actual test-set accuracy. The formal held-out job has not
+yet been submitted at this checkpoint. Commit/export the exact runner snapshot
+before submission, as described in HELDOUT_PROTOCOL.md. A full successful job
+prints `Frozen-model full held-out test comparison: PASS` and saves completed
+provenance, raw evaluation records, scope-labelled CSVs, a JSON summary and two
+figures for later audit. Held-out logs are ignored by Git.

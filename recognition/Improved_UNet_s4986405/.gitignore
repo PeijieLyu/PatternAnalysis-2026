@@ -9,3 +9,4 @@ __pycache__/
 unet-gpu-smoke-*.log
 improved-gpu-smoke-*.log
 comparison-train-*.log
+heldout-evaluate-*.log
