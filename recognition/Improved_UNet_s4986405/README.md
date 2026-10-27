@@ -58,8 +58,9 @@ These checks do not constitute a full scan of all training image/mask contents.
 
 Optional per-slice MRI normalization and six-channel one-hot masks are
 available. Optional paired training augmentation is also available.
-Class weighting and the full training/validation workflow are not implemented.
-A single-step CPU optimizer check is available.
+Baseline training/validation loops and a single-step CPU optimizer check are
+available. Class weighting, checkpoint persistence and the improved model
+remain unimplemented.
 
 ## Runtime dependencies and inspection tools
 
@@ -252,8 +253,8 @@ An imaging specialist needs an offline prototype that drafts pelvic contours for
 ### Scope, model choice and course concepts
 
 Use the supplied HipMRI 2D slices and six label IDs, targeting the Normal difficulty option. Keep the implemented U-Net [1] as baseline. The proposed Improved model will adapt residual context blocks and multi-scale segmentation supervision from Isensee et al. [2]. Their original network processes 3D brain MRI; the 2D adaptation and deviations will be documented. Convolutions, skip/residual connections and overlap-based objectives connect the design to course concepts. Both models will share preprocessing, loss, splits and a matched training budget. Optional per-slice MRI z-score normalization and six-channel one-hot targets
-are available. Paired horizontal flips are available for training; shared
-training pipeline integration remains to be implemented.
+are available. Paired horizontal flips and baseline training/validation loops
+are implemented. Checkpoint saving and the improved model remain to be implemented.
 
 ### Preliminary evidence already obtained
 
@@ -495,3 +496,53 @@ another directory containing the training image and mask folders. It saves no
 checkpoint and reports no segmentation accuracy. CPU backward emitted a CUDA
 driver warning, but both checks completed successfully. GPU runtime compatibility
 remains unverified.
+
+### Baseline training and validation loops
+
+`train.py` now connects normalized MRI slices, one-hot masks, the baseline
+U-Net, the shared Dice/CE objective, Adam and per-class Dice/IoU reporting.
+Before creating the loaders, it uses `check_splits.collect_patients` to reject
+train/validation patient overlap. It uses the supplied training and validation
+folders and does not open the test split.
+
+Training shuffles samples and enables parameter updates. `--augment` optionally
+enables paired training flips. Validation disables augmentation and autograd and
+sets the model to evaluation mode. It preserves parameters, running buffers and
+existing gradients. The default loader configuration uses zero worker processes;
+the global PyTorch RNG and the separate shuffle generator use `--seed` (3710 by
+default).
+
+`run_epoch` reports a sample-weighted average of per-batch objective values.
+The soft Dice term is pooled within each batch, so this average is not a soft
+Dice objective recomputed over the whole split. Hard-label metrics are computed
+from one confusion matrix accumulated over all processed pixels. Jointly absent
+classes retain NaN, and results use numerical label IDs.
+
+Run a bounded CPU check from the project directory:
+
+```bash
+python -m unittest -v test_train
+python -u train.py \
+  --data-root /home/groups/comp3710/HipMRI_Study_open/keras_slices_data \
+  --epochs 1 --batch-size 2 --base-channels 4 --device cpu --augment \
+  --max-train-batches 1 --max-val-batches 1
+```
+
+The defaults are one epoch, batch size 2, base width 4, CPU, learning rate 1e-3,
+one batch per phase and no augmentation. A batch limit of 0 processes every
+batch in that phase. Nonzero limits print PARTIAL RUN: their metrics describe
+only the processed subset and are not final evaluation results. This version
+saves no checkpoint or training history.
+
+All three training-loop test methods passed on Rangpur CPU. They verify parameter
+updates and the batch limit, validation with no gradients or model-state changes,
+pooled confusion counts including an incomplete final batch, and rejection of
+empty loaders and invalid limits.
+
+The real-data smoke run verified 31 training patients and 4 validation patients
+with no overlap. Each phase processed two slices and 65,536 pixels. One observed
+training loss was 2.931334 and validation loss was 2.962813. Validation label 5
+had NaN Dice/IoU because it was absent from both predictions and targets in that
+batch. The run ended with `Training/validation run: PASS`. This was one CPU
+training batch followed by one validation batch; no trained checkpoint or final
+accuracy result was produced. GPU compatibility remains unverified.
