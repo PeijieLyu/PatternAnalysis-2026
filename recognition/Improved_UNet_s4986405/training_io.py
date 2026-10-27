@@ -13,7 +13,7 @@ import torch
 
 
 SOURCE_FILES = (
-    'train.py', 'training_io.py', 'plot_history.py', 'modules.py', 'dataset.py',
+    'train.py', 'training_io.py', 'plot_history.py', 'gpu_profile.py', 'modules.py', 'dataset.py',
     'losses.py', 'metrics.py', 'check_splits.py',
 )
 

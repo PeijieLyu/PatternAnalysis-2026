@@ -6,3 +6,4 @@ __pycache__/
 *.ckpt
 *.nii
 *.nii.gz
+unet-gpu-smoke-*.log

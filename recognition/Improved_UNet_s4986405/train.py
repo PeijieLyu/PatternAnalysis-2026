@@ -2,6 +2,7 @@
 import argparse
 from itertools import islice
 import math
+import time
 from pathlib import Path
 
 import torch
@@ -14,6 +15,7 @@ from metrics import confusion_matrix, dice_iou_from_confusion
 from modules import UNet2D
 from training_io import RunRecorder, source_hashes
 from plot_history import plot_history
+from gpu_profile import save_gpu_profile
 
 
 def run_epoch(model, loader, device, optimizer=None, max_batches=None):
@@ -103,6 +105,9 @@ def main():
     torch.manual_seed(args.seed)
     torch.set_num_threads(1)
     device = torch.device(args.device)
+    run_started = time.perf_counter()
+    if device.type == 'cuda':
+        torch.cuda.reset_peak_memory_stats(device)
     train_images = args.data_root / 'keras_slices_train'
     val_images = args.data_root / 'keras_slices_validate'
     train_patients, train_count = collect_patients(train_images)
@@ -169,6 +174,11 @@ def main():
         print(f'Saved epoch {epoch}; best epoch={recorder.best_epoch}; new best={improved}', flush=True)
     plot_path = plot_history(args.output_dir)
     print('Saved training curves:', plot_path, flush=True)
+    if device.type == 'cuda':
+        profile = save_gpu_profile(args.output_dir, device, run_started)
+        print(f'GPU peak allocated GiB: {profile["peak_allocated_gib"]:.6f}', flush=True)
+        print(f'GPU peak reserved GiB: {profile["peak_reserved_gib"]:.6f}', flush=True)
+        print('GPU training profile: PASS', flush=True)
     print('Training/validation run: PASS', flush=True)
 
 

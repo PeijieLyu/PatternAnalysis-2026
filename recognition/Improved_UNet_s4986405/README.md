@@ -288,7 +288,7 @@ Requirements checked against COMP3710/COMP7710 assessment specification v2.5, Se
 
 ### Tools and assistance
 
-OpenAI ChatGPT and Codex assisted with substantial code scaffolding and documentation drafts. Assistance covered NIfTI image/mask pairing; the PyTorch Dataset and its validation checks; baseline U-Net components and assembly; Dice/IoU metrics; inspection, visualization and regression-test scripts; Git commands; Conda/Slurm troubleshooting; assessment-requirement review; literature lookup; and drafting this feasibility review and disclosure. Subsequent assistance also covered optional MRI z-score normalization, six-channel one-hot targets, paired training flips, the Dice/CE loss, training/validation loops, checkpoint and history persistence, training-curve plotting, and checkpoint-based prediction/export with their tests. The assistance included proposing experiments and acceptance criteria, which remain plans rather than measured results. This disclosure does not assert use of other AI tools that has not been confirmed.
+OpenAI ChatGPT and Codex assisted with substantial code scaffolding and documentation drafts. Assistance covered NIfTI image/mask pairing; the PyTorch Dataset and its validation checks; baseline U-Net components and assembly; Dice/IoU metrics; inspection, visualization and regression-test scripts; Git commands; Conda/Slurm troubleshooting; assessment-requirement review; literature lookup; and drafting this feasibility review and disclosure. Subsequent assistance also covered optional MRI z-score normalization, six-channel one-hot targets, paired training flips, the Dice/CE loss, training/validation loops, checkpoint and history persistence, training-curve plotting, and checkpoint-based prediction/export, and full-model GPU smoke-job/profiling code with their tests. The assistance included proposing experiments and acceptance criteria, which remain plans rather than measured results. This disclosure does not assert use of other AI tools that has not been confirmed.
 
 ### Verification performed so far
 
@@ -310,6 +310,7 @@ The student ran the suggested commands in the local WSL repository and on Rangpu
 - Running all five history-plot tests successfully and rendering the saved smoke history to a PNG reviewed with AI assistance.
 - Confirming Slurm job 700650 completed with exit code 0:0 and its CUDA convolution forward/backward check passed on an allocated A100 node.
 - Running all five prediction tests successfully, exporting a real validation prediction, and reviewing its aligned numeric-label/TP/FP/FN panels with AI assistance.
+- Running three memory-report unit tests plus three training-loop tests successfully on CPU, checking the new Slurm script syntax, and submitting GPU smoke job 704367; its execution was last observed pending.
 
 ### Current limits and responsibility
 
@@ -706,7 +707,7 @@ PNG rendering, and protection of existing prediction outputs.
 A separate real validation check used the epoch-2, base-width-4 partial checkpoint
 on `case_036_week_0_slice_0.nii.gz`. The prediction shape was `[256, 128]` and
 normalization was per-slice z-score. For numerical label 1, the observed counts
-were TP=0, FP=0, FN=23919. Prediction export completed and the downloaded PNG
+were TP=0, FP=0, FN=25191. Prediction export completed and the downloaded PNG
 was visually reviewed: panels, numeric color scale, partial-checkpoint title
 and blue FN overlay were consistent with the reported result. The prediction
 panel was dominated by label 4. This smoke checkpoint has only two limited CPU
@@ -715,3 +716,56 @@ updates and provides no valid evidence of useful segmentation quality.
 NIfTI inputs/outputs (`*.nii`, `*.nii.gz`) are ignored by Git alongside model
 weights. Runtime predictions remain outside the source repository. The held-out
 test split was not used in this prediction check.
+
+### Full U-Net GPU smoke job and allocator profiling
+
+`gpu_train_smoke.sbatch` requests one A100 and one CPU from partition/account
+`comp3710` for at most five minutes. It runs the complete baseline U-Net at
+base width 16 and batch size 2 for two epochs, each limited to two training
+batches and one validation batch. Training uses normalization, one-hot targets,
+paired augmentation and the shared Dice/CE objective. The test split is unused.
+This bounded run is an execution/resource check, not a final training experiment.
+
+The script must be submitted with `sbatch`; it rejects direct execution without
+a Slurm job allocation. Its run directory is
+`$HOME/hipmri_runs/unet_gpu_smoke_JOB_ID` and its submission-directory log is
+`unet-gpu-smoke-JOB_ID.log`. After training it checks checkpoint/history
+consistency and prints the GPU profile. Only successful completion of all
+commands prints `U-Net GPU smoke check: PASS`.
+
+For CUDA runs, `train.py` resets peak statistics before model creation and
+`gpu_profile.py` synchronizes CUDA before saving `gpu_profile.json`. The report
+contains peak allocated/reserved bytes and GiB, device capacity/name, allocator
+backend, node/job ID, model configuration, processed sample counts and run scope.
+Timing includes preparation, checkpoint I/O and plotting; it is not inference
+latency. CPU runs do not invoke the CUDA profiling path.
+
+These are PyTorch tensor/allocator memory statistics, not whole-device memory
+from NVIDIA-SMI. No resource-target result is claimed before a real GPU run is
+reviewed. API references:
+[peak allocated](https://docs.pytorch.org/docs/2.14/generated/torch.cuda.memory.max_memory_allocated.html),
+[peak reserved](https://docs.pytorch.org/docs/2.14/generated/torch.cuda.memory.max_memory_reserved.html).
+
+```bash
+python -m unittest -v test_gpu_profile test_train
+bash -n gpu_train_smoke.sbatch
+sbatch gpu_train_smoke.sbatch
+```
+
+Submit once and use the returned job ID to inspect progress:
+
+```bash
+sacct -j JOB_ID -X --format=JobID,State,ExitCode,NodeList
+cat unet-gpu-smoke-JOB_ID.log
+```
+
+All six CPU tests passed: three memory-accounting tests (known byte/GiB values
+and invalid counters/times) and three existing training-loop tests. Shell syntax
+validation also passed. On 27 October 2026, job 704367 was submitted and observed
+in state PD with reason Priority. Its full-model GPU execution, memory results
+and saved outputs have not yet been verified. The earlier completed job 700650
+validated only a small CUDA convolution; it does not substitute for this check.
+
+The previously transcribed real-prediction FN count was corrected from 23919
+to 25191 against the terminal output; TP=0 and FP=0 were unchanged. GPU job logs
+matching `unet-gpu-smoke-*.log` are ignored by Git.
