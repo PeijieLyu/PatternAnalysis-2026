@@ -49,7 +49,7 @@ Patient 39 contributes 480/660 slices (72.73%); each other patient contributes 6
 - Patient 38, label 3: Dice **0.795200 -> 0.611632** (-18.357 pp). This is the largest patient/label decline and needs image-level error analysis.
 - Patient 37, label 4: **0.856800 -> 0.786273** (-7.053 pp), despite the small pooled label-4 improvement.
 - Patient 36, label 5: **0.772585 -> 0.894256** (+12.167 pp). The pooled label-5 gain is not an improvement for every patient; patients 38 and 39 slightly decline.
-- These observations identify exploratory validation cases for subsequent overlays. No anatomical cause, boundary location or primary prostate score can be inferred from numeric scores alone.
+- These observations informed four actual failure examples and one improvement example, now documented with MRI, ground truth, predictions and TP/FP/FN overlays in [ERROR_ANALYSIS.md](ERROR_ANALYSIS.md). Anatomical mapping remains unverified.
 
 All patient/label values: [patient metrics CSV](results/comparison_v1_704715/patient_metrics_comparison.csv).
 
@@ -100,6 +100,6 @@ python compare_results.py \
 
 Use a new output directory. The original committed runtime snapshot and protocol must be preserved. The committed summaries/CSVs/PNGs contain derived validation records; MRI data and checkpoint weights remain outside Git.
 
-The test set remains untouched by the comparison runner. Final held-out evaluation, sourced label anatomy, tutor feasibility check-off and 3-5 real-slice qualitative failure analyses are still outstanding. Four validation patients and one training seed limit generalization claims; no statistical or clinical superiority is established. Source and filename/size hashes support record consistency but do not prove byte-identical data contents. Downloaded bundles excluded checkpoint weights, so weights were not independently reloaded locally; remote checkpoint checks passed in the experiment pipeline.
+The test set remains untouched by the comparison runner. Final held-out evaluation, sourced label anatomy and tutor feasibility check-off are still outstanding. Four actual validation failures and one improvement example have since been rendered and reviewed; see [ERROR_ANALYSIS.md](ERROR_ANALYSIS.md) for the declared selection rules, evidence and limitations. Four validation patients and one training seed limit generalization claims; no statistical or clinical superiority is established. Source and filename/size hashes support record consistency but do not prove byte-identical data contents. Downloaded bundles excluded checkpoint weights, so weights were not independently reloaded locally; remote checkpoint checks passed in the experiment pipeline.
 
 AI assistance covered report-code scaffolding, command suggestions, numerical consistency checks, plot review and drafting this analysis. The student executed the commands and shared the outputs and files; the student remains responsible for reviewing, understanding and explaining the submitted work.
