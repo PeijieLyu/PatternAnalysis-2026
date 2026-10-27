@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader
 
 from check_splits import collect_patients
 from dataset import HipMRI2DDataset
+from shape_batching import ShapeBatchSampler
 from losses import dice_ce_loss
 from metrics import confusion_matrix, dice_iou_from_confusion
 from modules import UNet2D
@@ -127,11 +128,18 @@ def main():
         normalize=True, one_hot=True,
     )
     generator = torch.Generator().manual_seed(args.seed)
+    print('Inspecting native slice shapes for batching...', flush=True)
+    train_sampler = ShapeBatchSampler(
+        train_dataset, args.batch_size, shuffle=True, generator=generator,
+    )
+    val_sampler = ShapeBatchSampler(val_dataset, args.batch_size, shuffle=False)
+    print('Train shape groups:', train_sampler.shape_counts, flush=True)
+    print('Validation shape groups:', val_sampler.shape_counts, flush=True)
     train_loader = DataLoader(
-        train_dataset, batch_size=args.batch_size, shuffle=True,
+        train_dataset, batch_sampler=train_sampler,
         num_workers=0, generator=generator,
     )
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
+    val_loader = DataLoader(val_dataset, batch_sampler=val_sampler, num_workers=0)
     model = UNet2D(base_channels=args.base_channels).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     print(f'Device: {device}; seed: {args.seed}; base channels: {args.base_channels}', flush=True)
@@ -146,6 +154,9 @@ def main():
         'arguments': {key: str(value.expanduser().resolve()) if isinstance(value, Path) else value
                       for key, value in vars(args).items()},
         'architecture': 'UNet2D',
+        'batching': {'strategy': 'same_shape_buckets', 'drop_last': False,
+                     'train_shapes': train_sampler.shape_counts,
+                     'validation_shapes': val_sampler.shape_counts},
         'model_config': {'in_channels': 1, 'num_classes': 6, 'base_channels': args.base_channels},
         'preprocessing': {'normalize': True, 'one_hot': True, 'train_flip_probability': 0.5 if args.augment else 0.0},
         'loss': {'name': 'dice_ce_loss', 'ce_weight': 1.0, 'dice_weight': 1.0, 'smooth': 1e-5},

@@ -288,7 +288,7 @@ Requirements checked against COMP3710/COMP7710 assessment specification v2.5, Se
 
 ### Tools and assistance
 
-OpenAI ChatGPT and Codex assisted with substantial code scaffolding and documentation drafts. Assistance covered NIfTI image/mask pairing; the PyTorch Dataset and its validation checks; baseline U-Net components and assembly; Dice/IoU metrics; inspection, visualization and regression-test scripts; Git commands; Conda/Slurm troubleshooting; assessment-requirement review; literature lookup; and drafting this feasibility review and disclosure. Subsequent assistance also covered optional MRI z-score normalization, six-channel one-hot targets, paired training flips, the Dice/CE loss, training/validation loops, checkpoint and history persistence, training-curve plotting, and checkpoint-based prediction/export, and full-model GPU smoke-job/profiling code with their tests. The assistance included proposing experiments and acceptance criteria, which remain plans rather than measured results. This disclosure does not assert use of other AI tools that has not been confirmed.
+OpenAI ChatGPT and Codex assisted with substantial code scaffolding and documentation drafts. Assistance covered NIfTI image/mask pairing; the PyTorch Dataset and its validation checks; baseline U-Net components and assembly; Dice/IoU metrics; inspection, visualization and regression-test scripts; Git commands; Conda/Slurm troubleshooting; assessment-requirement review; literature lookup; and drafting this feasibility review and disclosure. Subsequent assistance also covered optional MRI z-score normalization, six-channel one-hot targets, paired training flips, the Dice/CE loss, training/validation loops, checkpoint and history persistence, training-curve plotting, and checkpoint-based prediction/export, and full-model GPU smoke-job/profiling code and native-shape batching with their tests. The assistance included proposing experiments and acceptance criteria, which remain plans rather than measured results. This disclosure does not assert use of other AI tools that has not been confirmed.
 
 ### Verification performed so far
 
@@ -310,11 +310,12 @@ The student ran the suggested commands in the local WSL repository and on Rangpu
 - Running all five history-plot tests successfully and rendering the saved smoke history to a PNG reviewed with AI assistance.
 - Confirming Slurm job 700650 completed with exit code 0:0 and its CUDA convolution forward/backward check passed on an allocated A100 node.
 - Running all five prediction tests successfully, exporting a real validation prediction, and reviewing its aligned numeric-label/TP/FP/FN panels with AI assistance.
-- Running three memory-report unit tests plus three training-loop tests successfully on CPU, checking the new Slurm script syntax, and submitting GPU smoke job 704367; its execution was last observed pending.
+- Running three memory-report unit tests plus three training-loop tests successfully on CPU and checking the Slurm script syntax. GPU smoke job 704367 later raised a heterogeneous-slice batching error in epoch 2.
+- Running six native-shape batching tests plus three training-loop tests successfully on Rangpur CPU, then submitting replacement GPU smoke job 704509; it was observed pending with reason Priority.
 
 ### Current limits and responsibility
 
-The baseline has only undergone limited CPU training smoke runs; a final trained model has not been evaluated. The Improved model has not been implemented. The target prostate Dice, GPU memory, inference latency and proposed resource budgets have not been demonstrated. The Slurm CUDA convolution diagnostic completed successfully on an allocated A100 node; full-model GPU training and profiling remain unverified. The anatomical meaning of label IDs must be checked against dataset metadata before prostate-specific reporting. The full dataset contents have not been exhaustively scanned.
+Baseline training has only undergone limited smoke runs; a final trained model has not been evaluated. The Improved model is not yet integrated into the training/evaluation pipeline or validated in a comparison run. The target prostate Dice, GPU memory, inference latency and proposed resource budgets have not been demonstrated. The Slurm CUDA convolution diagnostic completed successfully on an allocated A100 node; full-model GPU training and profiling remain unverified. The anatomical meaning of label IDs must be checked against dataset metadata before prostate-specific reporting. The full dataset contents have not been exhaustively scanned.
 
 The student remains responsible for reviewing, understanding, correcting and explaining the submitted code, references, experimental design and report. The checks above document observed execution and do not establish that every line has received an independent manual audit. This disclosure must be updated as implementation, verification and actual AI use change. The tutor feasibility check-off remains incomplete.
 
@@ -761,11 +762,57 @@ cat unet-gpu-smoke-JOB_ID.log
 
 All six CPU tests passed: three memory-accounting tests (known byte/GiB values
 and invalid counters/times) and three existing training-loop tests. Shell syntax
-validation also passed. On 27 October 2026, job 704367 was submitted and observed
-in state PD with reason Priority. Its full-model GPU execution, memory results
-and saved outputs have not yet been verified. The earlier completed job 700650
-validated only a small CUDA convolution; it does not substitute for this check.
+validation also passed. Job 704367 subsequently saved epoch 1 but raised a
+DataLoader stacking error in epoch 2: image tensors [1, 256, 128] and
+[1, 256, 144] occurred in the same batch. It did not reach the final
+checkpoint/history checks, GPU profile export or smoke-check PASS marker.
+After the native-shape batching fix described below, replacement job 704509
+was submitted on 27 October 2026 and observed PD with reason Priority.
+Successful completion and memory results for the replacement job remain
+unverified. The earlier completed job 700650 validated only a small CUDA
+convolution; it does not substitute for this full-model check.
 
 The previously transcribed real-prediction FN count was corrected from 23919
 to 25191 against the terminal output; TP=0 and FP=0 were unchanged. GPU job logs
 matching `unet-gpu-smoke-*.log` are ignored by Git.
+
+### Native-shape batches for heterogeneous MRI slices
+
+The training data include different native image widths; the previously inspected
+256-by-128 slice is an example, not a fixed size for the entire dataset.
+`ShapeBatchSampler` reads image header shapes and groups indices by (height,
+width). Every batch contains one shape. It retains the final, possibly smaller
+batch of each group and covers every sample once in a full epoch.
+
+Images and masks retain their native pixel grid. No resizing, cropping or padding
+is introduced. Dataset checks still reject invalid labels and mismatched masks.
+Training shuffles indices within each shape and then shuffles batch order using
+the recorded generator. Validation uses deterministic groups and order.
+
+The requested batch size is an upper bound; small groups can produce smaller
+batches. Hard Dice/IoU still use the confusion matrix pooled over all original
+pixels. Reported epoch loss remains the sample-weighted mean of batch losses.
+The batch construction must be held fixed between baseline and Improved-model
+comparisons. Short runs with batch limits cover only a subset and do not establish
+segmentation quality, regardless of their reported metric values.
+
+`config.json` records the batching strategy, per-split shape/sample counts and
+that final batches are retained. Source hashes include `shape_batching.py`.
+No changes to the model, loss or metric functions are required for this fix.
+
+```bash
+python -m unittest -v test_shape_batching test_train
+```
+
+All nine test methods passed on Rangpur CPU on 27 October 2026. Six new tests
+cover complete index coverage with incomplete batches, unchanged image pixels
+and one-hot masks, reproducible shuffling, invalid batch sizes/non-2D images,
+continued rejection of mismatched masks, and pooled pixel accounting across
+three native shapes (all 7,680 fixture pixels). The three existing training-loop
+tests also passed, including parameter updates and validation-state isolation.
+This establishes CPU regression checks, not successful GPU execution.
+
+Original job 704367 and its existing artifacts are retained. Replacement job
+704509 uses the same bounded baseline settings and its own job-specific log/run
+directory. At this checkpoint it was queued with reason Priority; no completed
+GPU profile or final segmentation result is claimed.
