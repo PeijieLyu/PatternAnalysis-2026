@@ -293,7 +293,7 @@ Requirements checked against COMP3710/COMP7710 assessment specification v2.5, Se
 
 ### Tools and assistance
 
-OpenAI ChatGPT and Codex assisted with substantial code scaffolding and documentation drafts. Assistance covered NIfTI image/mask pairing; the PyTorch Dataset and its validation checks; baseline U-Net components and assembly; Dice/IoU metrics; inspection, visualization and regression-test scripts; Git commands; Conda/Slurm troubleshooting; assessment-requirement review; literature lookup; and drafting this feasibility review and disclosure. Subsequent assistance also covered optional MRI z-score normalization, six-channel one-hot targets, paired training flips, the Dice/CE loss, training/validation loops, checkpoint and history persistence, training-curve plotting, and checkpoint-based prediction/export, and full-model GPU smoke-job/profiling code, native-shape batching, and the paper-inspired 2D Improved model architecture and the shared architecture-selection/checkpoint-loading paths, split evaluation, patient/case metric aggregation, separated inference timing, and the matched experiment protocol/Slurm orchestration with their tests. The assistance included proposing experiments and acceptance criteria, which remain plans rather than measured results. This disclosure does not assert use of other AI tools that has not been confirmed.
+OpenAI ChatGPT and Codex assisted with substantial code scaffolding and documentation drafts. Assistance covered NIfTI image/mask pairing; the PyTorch Dataset and its validation checks; baseline U-Net components and assembly; Dice/IoU metrics; inspection, visualization and regression-test scripts; Git commands; Conda/Slurm troubleshooting; assessment-requirement review; literature lookup; and drafting this feasibility review and disclosure. Subsequent assistance also covered optional MRI z-score normalization, six-channel one-hot targets, paired training flips, the Dice/CE loss, training/validation loops, checkpoint and history persistence, training-curve plotting, and checkpoint-based prediction/export, and full-model GPU smoke-job/profiling code, native-shape batching, and the paper-inspired 2D Improved model architecture and the shared architecture-selection/checkpoint-loading paths, split evaluation, patient/case metric aggregation, separated inference timing, and the matched experiment protocol/Slurm orchestration and completed-run comparison reporting with their tests. The assistance included proposing experiments and acceptance criteria, which remain plans rather than measured results. This disclosure does not assert use of other AI tools that has not been confirmed.
 
 ### Verification performed so far
 
@@ -324,9 +324,11 @@ The student ran the suggested commands in the local WSL repository and on Rangpu
 - Running all 13 evaluation/metric regression tests successfully on Rangpur CPU and exporting a two-slice real validation smoke evaluation from Improved checkpoint 704574, with patient separation and partial scope retained.
 - Running all eight comparison-protocol/orchestration tests on Rangpur, checking the Slurm array script syntax, and inspecting partition/QoS/account wall-time records. The orchestration tests stub training children and do not establish that the formal 20-epoch jobs ran.
 
+- Running all eight comparison-reporting tests on Rangpur, including generation of three PNG figures from synthetic completed-run fixtures. Real formal-run comparisons and visual review remain pending.
+
 ### Current limits and responsibility
 
-Both architectures passed limited real-MRI GPU training/validation, checkpoint and allocator-profile checks. The Improved model also passed a real-MRI CPU smoke run. The full-training protocol is prepared and its orchestration tests passed; formal 20-epoch jobs have not yet been launched at this checkpoint. No fully trained model or comparative held-out result has been evaluated. Short-run tensor/allocator peaks are recorded below; the proposed long-run resource budget, whole-device memory target, GPU inference latency and target prostate Dice remain unverified. The evaluation tool passed synthetic CPU tests and a two-slice real validation export; those results are smoke checks. The anatomical meaning of label IDs must be checked against dataset metadata before prostate-specific reporting. The full dataset contents have not been exhaustively scanned.
+Both architectures passed limited real-MRI GPU training/validation, checkpoint and allocator-profile checks. The Improved model also passed a real-MRI CPU smoke run. The full-training protocol and reporting tests passed. Formal array 704715 was submitted from commit bc8a6a4688f50770f71de24a56dff8aad43204c7; the latest reviewed output showed baseline epoch 5/20 and no Improved-model log yet. Completion of either formal task has not yet been verified. No fully trained model or comparative held-out result has been evaluated. Short-run tensor/allocator peaks are recorded below; the proposed long-run resource budget, whole-device memory target, GPU inference latency and target prostate Dice remain unverified. The evaluation tool passed synthetic CPU tests and a two-slice real validation export; those results are smoke checks. The anatomical meaning of label IDs must be checked against dataset metadata before prostate-specific reporting. The full dataset contents have not been exhaustively scanned.
 
 The student remains responsible for reviewing, understanding, correcting and explaining the submitted code, references, experimental design and report. The checks above document observed execution and do not establish that every line has received an independent manual audit. This disclosure must be updated as implementation, verification and actual AI use change. The tutor feasibility check-off remains incomplete.
 
@@ -1138,7 +1140,7 @@ Only a successful full task prints `Full training and validation comparison
 task: PASS`. A time limit or failed stage does not count as a completed protocol,
 even if some checkpoints survive. Automatic training resume is not implemented.
 Review Slurm accounting together with the final marker and completed summary.
-These formal jobs have not yet been launched at this documentation checkpoint.
+Array 704715 has since been submitted from the committed source snapshot. The observed progress and remaining checks are recorded below.
 
 `comparison_train.sbatch` uses array task 0 for the baseline and task 1 for the
 Improved model. The array requests identical initial resources; each task has
@@ -1173,5 +1175,67 @@ Observed scheduler records on 27 October 2026 showed partition `comp3710` UP,
 `MaxTime=UNLIMITED`, default time 03:00:00, and partition QoS `comp3710` MaxWall
 12:00:00. The user's account-association output had no explicit MaxWall value.
 The script explicitly requests 04:00:00, below the observed partition QoS limit.
-Actual scheduler acceptance, queue delay and whether 20 epochs fit this budget
-remain unverified until the formal jobs are submitted and complete.
+The scheduler accepted array 704715. The baseline subsequently started on
+a100-8 while the Improved task remained pending at the last accounting check.
+Whether both complete 20 epochs within this budget remains unverified.
+
+### Completed-run validation comparison reporting
+
+`compare_results.py` audits two completed experiment directories: source commit
+and hashes, identical protocol and data manifests, full epoch/sample counts,
+best-validation-loss selection, checkpoint identity, repeated validation and
+CUDA timing settings. It recomputes numeric-label metrics from confusion counts
+and rejects incomplete, partial or mismatched runs before creating a report.
+It does not train models, modify their snapshots or inspect the test split.
+
+All eight reporting tests passed on Rangpur on 27 October 2026 (1.691 seconds),
+including the three-PNG rendering test with Matplotlib. The tests use synthetic
+completed-run records, not measured formal-training results. They cover
+hand-calculated differences, undefined metrics, CSV/JSON scope and null handling,
+provenance/data/metric inconsistencies, incomplete runs, timing mismatches,
+existing-output preservation and figure generation. Passing the PNG test does
+not constitute visual review of real result figures.
+
+Formal array 704715 uses immutable source commit
+`bc8a6a4688f50770f71de24a56dff8aad43204c7`, under
+`$HOME/hipmri_comparisons/bc8a6a4688f50770f71de24a56dff8aad43204c7`.
+Task 0 is UNet2D and task 1 is ImprovedUNet2D. The latest reviewed baseline
+log reached epoch 5/20, with 11,460 training and 660 validation samples in each
+visible completed phase. Epoch-4 validation loss was 0.411596 and epoch-5 loss
+was 0.456183; the visible output saved epoch 4 as best. The Improved task had
+no log at that check; the preceding accounting output showed it PENDING.
+These are intermediate observations, not final model scores or completion.
+
+After both tasks complete successfully, check Slurm exit codes, final task
+PASS markers and completed result/provenance files. Then run from the normal
+working checkout or scratch directory, using a new report directory:
+
+```bash
+python -m unittest -v test_compare_results
+python compare_results.py \
+  --baseline-run "$HOME/hipmri_runs/comparison_v1_704715_0_UNet2D" \
+  --improved-run "$HOME/hipmri_runs/comparison_v1_704715_1_ImprovedUNet2D" \
+  --output-dir "$HOME/hipmri_runs/comparison_report_704715"
+```
+
+A successful export prints `Validation comparison export: PASS` and produces:
+
+- `comparison.json` and `comparison.md`: scope, source commit, comparison and
+  limitations; JSON also records the reporter SHA256.
+- `per_class_comparison.csv`: six numeric IDs, Dice/IoU scores and changes.
+- `patient_metrics_comparison.csv`: numeric-label metrics grouped by patient.
+- `model_summary.csv`: selected epoch/loss, training allocator peaks, training
+  wall time and repeated validation model-forward timing summaries.
+- `case_times.csv`: case processing times for each model and validation pass.
+- `training_loss_comparison.png`, `validation_metrics_comparison.png` and
+  `resource_comparison.png`: loss curves, numeric-label overlap and resource
+  observations. `--skip-plots` omits these three figures.
+
+Labels remain 0-5 because their anatomical mapping is unconfirmed. Undefined
+metrics stay JSON null / CSV empty / explicitly undefined in Markdown and plots.
+All scores are validation-only. Three timing passes reuse the same weights and
+are not independent training replications. Allocator peaks are not whole-device
+memory use; training wall time includes I/O/plotting and is separate from model
+forward latency. Node differences and the single training seed limit performance
+comparisons. Real comparison exports and visual review remain pending; no
+prostate-specific or held-out result is claimed. Tutor check-off remains pending.
