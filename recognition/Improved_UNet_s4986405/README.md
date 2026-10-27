@@ -63,6 +63,7 @@ CPU optimizer check are available. ImprovedUNet2D is implemented and its
 architecture tests passed on CPU. Training, prediction and checkpoint checking
 support both architectures, with CPU integration tests passed. Numeric-label
 evaluation exports pooled, patient, case and slice metrics with timing records.
+A fixed full-training comparison protocol and Slurm runner are prepared.
 Class weighting remains unimplemented.
 
 ## Runtime dependencies and inspection tools
@@ -278,7 +279,7 @@ Filename audits found 31/4/3 patients and 11,460/660/540 slices in train/validat
 
 ### Risks, budget, next experiment and fallback
 
-Key risks are class imbalance, only three test patients, unverified anatomical label-ID mapping/slice ordering, missing 3D context and unverified long-run resource use and final model quality. Verify metadata before prostate/base/apex analysis. Proposed initial budget: two one-hour GPU pilots, then two comparison runs capped at four GPU-hours each. Next: finish check-off, confirm label anatomy, freeze the comparison protocol, and run full training/evaluation using the shared preprocessing. Both models have passed bounded real-MRI GPU smoke checks. Reduce batch size/channel width if needed. If only baseline is feasible, report the Easy fallback honestly and discuss the revised scope with the tutor.
+Key risks are class imbalance, only three test patients, unverified anatomical label-ID mapping/slice ordering, missing 3D context and unverified long-run resource use and final model quality. Verify metadata before prostate/base/apex analysis. Proposed initial budget: two one-hour GPU pilots, then two comparison runs capped at four GPU-hours each. Next: finish check-off, confirm label anatomy, run the frozen v1 full-training/validation comparison using the shared preprocessing. Both models have passed bounded real-MRI GPU smoke checks. Reduce batch size/channel width if needed. If only baseline is feasible, report the Easy fallback honestly and discuss the revised scope with the tutor.
 
 ### References
 
@@ -292,7 +293,7 @@ Requirements checked against COMP3710/COMP7710 assessment specification v2.5, Se
 
 ### Tools and assistance
 
-OpenAI ChatGPT and Codex assisted with substantial code scaffolding and documentation drafts. Assistance covered NIfTI image/mask pairing; the PyTorch Dataset and its validation checks; baseline U-Net components and assembly; Dice/IoU metrics; inspection, visualization and regression-test scripts; Git commands; Conda/Slurm troubleshooting; assessment-requirement review; literature lookup; and drafting this feasibility review and disclosure. Subsequent assistance also covered optional MRI z-score normalization, six-channel one-hot targets, paired training flips, the Dice/CE loss, training/validation loops, checkpoint and history persistence, training-curve plotting, and checkpoint-based prediction/export, and full-model GPU smoke-job/profiling code, native-shape batching, and the paper-inspired 2D Improved model architecture and the shared architecture-selection/checkpoint-loading paths, split evaluation, patient/case metric aggregation and separated inference timing with their tests. The assistance included proposing experiments and acceptance criteria, which remain plans rather than measured results. This disclosure does not assert use of other AI tools that has not been confirmed.
+OpenAI ChatGPT and Codex assisted with substantial code scaffolding and documentation drafts. Assistance covered NIfTI image/mask pairing; the PyTorch Dataset and its validation checks; baseline U-Net components and assembly; Dice/IoU metrics; inspection, visualization and regression-test scripts; Git commands; Conda/Slurm troubleshooting; assessment-requirement review; literature lookup; and drafting this feasibility review and disclosure. Subsequent assistance also covered optional MRI z-score normalization, six-channel one-hot targets, paired training flips, the Dice/CE loss, training/validation loops, checkpoint and history persistence, training-curve plotting, and checkpoint-based prediction/export, and full-model GPU smoke-job/profiling code, native-shape batching, and the paper-inspired 2D Improved model architecture and the shared architecture-selection/checkpoint-loading paths, split evaluation, patient/case metric aggregation, separated inference timing, and the matched experiment protocol/Slurm orchestration with their tests. The assistance included proposing experiments and acceptance criteria, which remain plans rather than measured results. This disclosure does not assert use of other AI tools that has not been confirmed.
 
 ### Verification performed so far
 
@@ -321,10 +322,11 @@ The student ran the suggested commands in the local WSL repository and on Rangpu
 - Running an Improved-model real-MRI CPU smoke epoch and checking saved curves, history consistency and checkpoint reloading.
 - Confirming baseline GPU job 704509 and Improved GPU job 704574 both completed with ExitCode 0:0, successful checkpoint checks and final smoke PASS markers, then reviewing their bounded allocator-memory profiles with AI assistance.
 - Running all 13 evaluation/metric regression tests successfully on Rangpur CPU and exporting a two-slice real validation smoke evaluation from Improved checkpoint 704574, with patient separation and partial scope retained.
+- Running all eight comparison-protocol/orchestration tests on Rangpur, checking the Slurm array script syntax, and inspecting partition/QoS/account wall-time records. The orchestration tests stub training children and do not establish that the formal 20-epoch jobs ran.
 
 ### Current limits and responsibility
 
-Both architectures passed limited real-MRI GPU training/validation, checkpoint and allocator-profile checks. The Improved model also passed a real-MRI CPU smoke run. No fully trained model or comparative held-out result has been evaluated. Short-run tensor/allocator peaks are recorded below; the proposed long-run resource budget, whole-device memory target, GPU inference latency and target prostate Dice remain unverified. The evaluation tool passed synthetic CPU tests and a two-slice real validation export; those results are smoke checks. The anatomical meaning of label IDs must be checked against dataset metadata before prostate-specific reporting. The full dataset contents have not been exhaustively scanned.
+Both architectures passed limited real-MRI GPU training/validation, checkpoint and allocator-profile checks. The Improved model also passed a real-MRI CPU smoke run. The full-training protocol is prepared and its orchestration tests passed; formal 20-epoch jobs have not yet been launched at this checkpoint. No fully trained model or comparative held-out result has been evaluated. Short-run tensor/allocator peaks are recorded below; the proposed long-run resource budget, whole-device memory target, GPU inference latency and target prostate Dice remain unverified. The evaluation tool passed synthetic CPU tests and a two-slice real validation export; those results are smoke checks. The anatomical meaning of label IDs must be checked against dataset metadata before prostate-specific reporting. The full dataset contents have not been exhaustively scanned.
 
 The student remains responsible for reviewing, understanding, correcting and explaining the submitted code, references, experimental design and report. The checks above document observed execution and do not establish that every line has received an independent manual audit. This disclosure must be updated as implementation, verification and actual AI use change. The tutor feasibility check-off remains incomplete.
 
@@ -1078,3 +1080,98 @@ prostate accuracy or superiority over the baseline. The observed CPU median
 model-forward time was about 133.56 ms over just two timed forwards after warmup;
 it is a pipeline check, not a GPU latency result. Full validation/test evaluation
 on fully trained checkpoints and repeated GPU timing remain pending.
+
+### Frozen full-training comparison protocol v1
+
+`comparison_protocol.json` fixes the initial comparison before full training.
+Protocol ID is `hipmri-2d-comparison-v1`, dated 27 October 2026. The two models
+share the following configuration; Improved-model dropout remains 0.3 as part
+of its architecture. This compares complete model designs, not individual
+architectural ablations.
+
+| Setting | Both models |
+|---|---|
+| Architecture runs | UNet2D and ImprovedUNet2D |
+| Epochs | 20 complete epochs each |
+| Base channels / batch size | 16 / 2 |
+| Optimizer / learning rate | Adam / 0.001, constant |
+| Training seed | 3710 |
+| Data | 11,460 training slices / 31 patients; 660 validation slices / 4 patients |
+| Preprocessing | Per-slice all-pixel z-score; six-class one-hot targets |
+| Training augmentation | Paired last-axis flips with probability 0.5 |
+| Loss | Shared Dice plus cross-entropy, unchanged weights/smoothing |
+| Batch limits | Both 0, meaning all train/validation batches |
+| Checkpoint selection | Minimum full-validation loss; earliest epoch on ties |
+| After-training evaluation | Three complete validation passes at batch size 1 |
+| Timing warmup | Three forward calls per selected shape before measurement |
+| Requested resources | One A100 and one CPU per model, at most four hours each |
+
+Twenty epochs is the fixed initial training budget, not a claim of convergence
+or target accuracy. A seed is recorded but bitwise deterministic CUDA training
+is not claimed. Three validation/timing passes reuse the same selected weights;
+they are not three independent training seeds. Anatomical label mapping must
+come from the tutor/dataset metadata and be recorded independently of observed
+class scores before final held-out reporting. Tutor check-off remains pending.
+
+`run_comparison.py` validates the protocol, expected train/validation slice and
+patient counts, paired masks and patient separation. It never inspects the real
+test split. Each task creates a new output directory, saves the exact protocol,
+full source-file SHA256 records, source Git commit and a filename/byte-size data
+manifest. The manifest is not a hash of image/mask contents. Runtime-file changes
+between stages cause failure rather than producing a completed comparison.
+
+The runner launches the existing training CLI, verifies all 20 history epochs
+and full sample counts, checks checkpoint consistency, then evaluates the best
+checkpoint on the complete validation split three times. It checks that the
+checkpoint hash and pooled confusion counts remain consistent between passes.
+Output layout is:
+
+- `training/`: checkpoints, epoch histories, training curves and GPU profile.
+- `validation_1/`, `validation_2/`, `validation_3/`: complete numeric-label
+  evaluation exports and timing records.
+- `protocol.json`, `data_manifest.json`, `experiment_provenance.json`:
+  configuration, input manifest and stage/status records.
+- `comparison_result.json`: completed-task summary, best epoch, training GPU
+  profile, validation/patient metrics and timing medians across passes.
+
+Only a successful full task prints `Full training and validation comparison
+task: PASS`. A time limit or failed stage does not count as a completed protocol,
+even if some checkpoints survive. Automatic training resume is not implemented.
+Review Slurm accounting together with the final marker and completed summary.
+These formal jobs have not yet been launched at this documentation checkpoint.
+
+`comparison_train.sbatch` uses array task 0 for the baseline and task 1 for the
+Improved model. The array requests identical initial resources; each task has
+its own output and `comparison-train-ARRAY_JOB_ID_TASK_ID.log`. It explicitly
+inherits the environment and requires `HIPMRI_SOURCE_COMMIT` to name the full
+40-character commit SHA used for the source snapshot. Array IDs/log placeholders
+follow [Slurm's job-array documentation](https://slurm.schedmd.com/job_array.html).
+Logs are ignored by Git and weights/data remain outside the source repository.
+
+Before submission, commit the protocol/code, export this project tree from that
+exact Git revision using `git archive`, and extract it into a fresh snapshot
+directory on Rangpur. Run the array from that directory with the matching
+`HIPMRI_SOURCE_COMMIT`. Later development continues in the normal checkout or
+scratch directory, preserving the queued/running source snapshot. `--dry-run`
+prints planned commands without reading data, launching children or creating
+outputs; it still checks that all required runtime files exist.
+
+```bash
+python -m unittest -v test_comparison
+bash -n comparison_train.sbatch
+```
+
+All eight orchestration tests passed locally and on Rangpur. They cover matched
+full-split plans for both models, rejecting invalid scope/budgets, dry-run
+isolation, mocked complete execution and provenance, changed source, incomplete
+sample counts, existing output preservation and preflight data errors. Training
+and evaluation child processes are stubbed in these tests; the earlier real-MRI
+smoke checks establish the underlying CLI execution separately. Bash syntax
+validation also passed.
+
+Observed scheduler records on 27 October 2026 showed partition `comp3710` UP,
+`MaxTime=UNLIMITED`, default time 03:00:00, and partition QoS `comp3710` MaxWall
+12:00:00. The user's account-association output had no explicit MaxWall value.
+The script explicitly requests 04:00:00, below the observed partition QoS limit.
+Actual scheduler acceptance, queue delay and whether 20 epochs fit this budget
+remain unverified until the formal jobs are submitted and complete.

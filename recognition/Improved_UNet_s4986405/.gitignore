@@ -8,3 +8,4 @@ __pycache__/
 *.nii.gz
 unet-gpu-smoke-*.log
 improved-gpu-smoke-*.log
+comparison-train-*.log
