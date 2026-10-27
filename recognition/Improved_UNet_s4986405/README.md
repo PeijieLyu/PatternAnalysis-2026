@@ -1,1272 +1,404 @@
-# 2D Improved U-Net for HipMRI Prostate Segmentation
+# 2D Improved U-Net for HipMRI segmentation
 
-COMP3710 Pattern Recognition Final Project
+COMP3710 Pattern Recognition Final Project | s4986405 | Normal difficulty
 
-- Model: 2D Improved U-Net
-- Difficulty: Normal
-- Dataset: HipMRI 2D
-- Task: Prostate segmentation
+This project implements a basic 2D U-Net and a residual, multi-scale 2D Improved U-Net for the supplied HipMRI pelvic MRI slices. It investigates whether extra model complexity produces better overlap and fewer contour corrections at an acceptable memory and runtime cost. The intended output is an offline segmentation draft for human review. The course task targets prostate segmentation; the numerical-to-anatomical label mapping has not been independently confirmed, so all measured results retain IDs 0-5.
 
-## Formal validation results
+## Current evidence and scope
 
-Both models completed 20 full epochs and three validation passes under protocol `hipmri-2d-comparison-v1` (array 704715). Five pooled numeric-label Dice scores improve with the Improved model, while label 3 declines and the six-label mean is slightly lower. Model-forward time is about 2.80x and allocated training memory about 2.51x the baseline. See [VALIDATION_RESULTS.md](VALIDATION_RESULTS.md) for all class/patient metrics, figures, source hashes and scope. These are validation-only results; anatomical mapping, tutor check-off and final held-out evaluation remain pending. Four actual validation failures and one improvement example have been rendered, checked and discussed in [ERROR_ANALYSIS.md](ERROR_ANALYSIS.md). Earlier bounded checks below are historical evidence.
+Both models completed the same 20-epoch training budget and three complete validation passes. The Improved model increased five pooled label Dice scores but reduced ID-3 Dice; the mean over six pooled labels changed from 0.912343 to 0.911856. Its validation model-forward time was about 2.80 times the baseline and peak allocated training memory about 2.51 times the baseline. These observations support a trade-off analysis, not a claim of overall superiority.
 
-The fixed-checkpoint test protocol and nine orchestration tests are ready; see [HELDOUT_PROTOCOL.md](HELDOUT_PROTOCOL.md). Actual held-out evaluation remains pending.
+Four actual validation failure examples and one improvement example were re-inferred and reviewed. Their MRI, reference, prediction and TP/FP/FN figures are included below. A separate fixed-model held-out protocol covers all 540 test slices and all six numeric labels. The user requested local execution to avoid the queue. Both fixed models subsequently completed three full passes on the local RTX 4070. Local results, audit checks and two figures are included below; downloaded remote accounting separately reports that job 705243 had already completed before the cancellation attempt.
 
-## HipMRI 2D Dataset
-
-`dataset.py` provides `HipMRI2DDataset`, a minimal PyTorch Dataset.
-
-### Usage
-
-Run from this project directory in an environment with PyTorch and NiBabel
-installed. The example requires access to the dataset on Rangpur.
-
-```python
-from pathlib import Path
-from dataset import HipMRI2DDataset
-
-base = Path("/home/groups/comp3710/HipMRI_Study_open/keras_slices_data")
-dataset = HipMRI2DDataset(
-    image_dir=base / "keras_slices_train",
-    mask_dir=base / "keras_slices_seg_train",
-)
-image, mask = dataset[0]
-```
-
-### Pairing and outputs
-
-- Images matching `case_*.nii.gz` are sorted by filename.
-- Each image is paired with `seg_*.nii.gz` using the same filename suffix.
-- Images are returned as `torch.float32` tensors with shape `[1, H, W]`.
-- Masks are returned as `torch.long` tensors with shape `[H, W]`.
-- MRI intensity values are preserved when normalize=False (the default).
-Valid mask labels are preserved with either normalization setting.
-- Each slice may contain only a subset of labels 0 through 5.
-
-### Input checks
-
-The Dataset rejects missing directories, empty image sets, missing paired
-masks, non-2D inputs, and image/mask shape mismatches.
-MRI values must be finite. Mask values must be finite integers in the
-range 0 through 5.
-
-### Validation completed
-
-- Found 11,460 training image/mask pairs on Rangpur.
-- Loaded one real training sample: image `[1, 256, 128]`, mask `[256, 128]`.
-- Temporary NIfTI tests passed for valid 2D inputs, 3D input rejection,
-  and shape mismatch rejection.
-- Temporary NIfTI tests passed for valid mask labels and rejection of
-  fractional labels, negative labels, labels above 5, NaN, and Inf.
-
-These checks do not constitute a full scan of all training image/mask contents.
-
-Optional per-slice MRI normalization and six-channel one-hot masks are
-available. Optional paired training augmentation is also available.
-Baseline training/validation loops, checkpoint/history saving and a single-step
-CPU optimizer check are available. ImprovedUNet2D is implemented and its
-architecture tests passed on CPU. Training, prediction and checkpoint checking
-support both architectures, with CPU integration tests passed. Numeric-label
-evaluation exports pooled, patient, case and slice metrics with timing records.
-A fixed full-training comparison protocol and Slurm runner are prepared.
-Class weighting remains unimplemented.
-
-## Runtime dependencies and inspection tools
-
-`requirements.txt` lists the direct third-party runtime dependencies:
-PyTorch, NiBabel, and Matplotlib. Versions are not pinned, and the file does
-not specify a CUDA build.
-
-The existing Rangpur environment used for validation reported:
-- PyTorch: `2.14.0+cu130`
-- NiBabel: `5.4.2`
-- Matplotlib: `3.11.2`
-
-These are observed versions, not a separately validated clean installation.
-
-### Run the inspection tools
-
-On Rangpur, activate the existing environment and run from the directory
-containing the project scripts:
-
-```bash
-source ~/miniconda3/etc/profile.d/conda.sh
-conda activate torch
-HIPMRI_DATA=/home/groups/comp3710/HipMRI_Study_open/keras_slices_data
-```
-
-Inspect the first batch:
-
-```bash
-python check_dataset.py \
-  --image-dir "$HIPMRI_DATA/keras_slices_train" \
-  --mask-dir "$HIPMRI_DATA/keras_slices_seg_train" \
-  --batch-size 4
-```
-
-Check patient IDs across all three splits:
-
-```bash
-python check_splits.py \
-  --train-dir "$HIPMRI_DATA/keras_slices_train" \
-  --val-dir "$HIPMRI_DATA/keras_slices_validate" \
-  --test-dir "$HIPMRI_DATA/keras_slices_test"
-```
-
-This script uses only the Python standard library and reads filenames,
-not image contents. The verified split sizes were 31/4/3 patients and
-11,460/660/540 slices, with no shared patient IDs between splits.
-
-Save a side-by-side MRI/mask preview:
-
-```bash
-python visualize_sample.py \
-  --image-dir "$HIPMRI_DATA/keras_slices_train" \
-  --mask-dir "$HIPMRI_DATA/keras_slices_seg_train" \
-  --index 0 \
-  --output /tmp/hipmri_sample_preview.png
-```
-
-Choose a new output filename if the PNG already exists. The visualization
-uses a headless backend and displays array orientation without anatomical
-reorientation. Batch inspection and visualization read selected samples;
-they do not validate every image in the dataset.
-
-## Baseline UNet2D
-
-`modules.py` provides a four-level baseline U-Net built from `DoubleConv`,
-`Down`, and `Up` blocks.
-
-- Defaults: 1 input channel, 6 output classes, base channel width 16.
-- Default parameter count: 1,962,422.
-- Input: `[B, 1, H, W]`, with height and width each at least 16.
-- Output: raw logits `[B, 6, H, W]`.
-- Downsampling uses max pooling; upsampling uses bilinear interpolation
-  to match skip feature dimensions before channel concatenation.
-- The output layer is a 1x1 convolution without softmax.
-
-### CPU model smoke checks
-
-Run from the project directory with the Python environment activated:
-
-```bash
-python check_model.py
-python check_model.py --height 31 --width 17 --base-channels 4 --backward
-```
-
-The script uses synthetic inputs and checks output shape and finite values.
-With `--backward`, it also checks input and parameter gradients.
-It does not update parameters or evaluate segmentation accuracy.
-
-Both commands passed on Rangpur. A real HipMRI sample also produced finite
-logits with shape `[1, 6, 256, 128]` in a separate integration check.
-
-Limited CPU and GPU training smoke runs have completed; no final trained
-baseline has been evaluated. Bounded full-model GPU checks for both architectures
-passed (see the latest real-MRI evidence below). CPU backward checks on login0
-reported a CUDA driver compatibility warning.
-
-## Segmentation metrics and pipeline smoke check
-
-`metrics.py` computes per-class Dice and IoU from a pixel confusion matrix.
-Rows represent target classes; columns represent predicted classes.
-
-- Predictions and targets use integer label IDs (`torch.long`).
-- Confusion matrices are summed across processed batches before computing
-  metrics, rather than averaging per-slice scores.
-- A class absent from both prediction and target receives NaN.
-- A class present on only one side receives zero.
-- Results include all six classes; no class average is computed.
-
-Run a small end-to-end CPU check from the project directory:
-
-```bash
-python check_pipeline.py \
-  --image-dir /home/groups/comp3710/HipMRI_Study_open/keras_slices_data/keras_slices_train \
-  --mask-dir /home/groups/comp3710/HipMRI_Study_open/keras_slices_data/keras_slices_seg_train \
-  --batch-size 2 \
-  --max-batches 1
-```
-
-The script connects Dataset, DataLoader, UNet2D, argmax predictions, and
-metrics. It defaults to base channel width 4 and a randomly initialized
-model. It does not load a checkpoint or update parameters.
-
-The Rangpur check processed two real slices and counted 65,536 pixels.
-This validates pipeline execution on that subset, not segmentation quality
-or the contents of the full dataset.
-
-## Rangpur Slurm CUDA diagnostic
-
-`gpu_check.sbatch` requests one A100 GPU for a five-minute diagnostic using
-partition `comp3710` and account `comp3710`.
-
-The script uses `$HOME/miniconda3/envs/torch/bin/python`, reports the node,
-NVIDIA driver information, and PyTorch CUDA build, then checks a small CUDA
-convolution forward/backward operation and finite gradients.
-
-During setup, the partition reported `DefMemPerNode=UNLIMITED` and nodes
-reported `RealMemory=1` to Slurm. The script leaves memory at the partition
-default instead of requesting a fixed 4G.
-
-### Submit and inspect
-
-Run on Rangpur from the directory containing the script:
-
-```bash
-bash -n gpu_check.sbatch
-sbatch gpu_check.sbatch
-```
-
-Submit once and note the returned job ID. Replace JOB_ID below:
-
-```bash
-squeue -j JOB_ID
-sacct -j JOB_ID -X --format=JobID,State,ExitCode,NodeList
-cat gpu-check-JOB_ID.log
-```
-
-Logs are written to the submission directory. The batch job continues
-after SSH disconnects.
-
-Successful validation requires COMPLETED, ExitCode 0:0, and the log message
-`CUDA convolution forward/backward: PASS`. A pending job's ExitCode 0:0
-does not indicate success.
-
-After its account and memory request were corrected, diagnostic job 700650
-completed on a100-1 with state COMPLETED and ExitCode 0:0. Its log reported
-`CUDA convolution forward/backward: PASS`. This verifies the small CUDA
-diagnostic on the allocated node. Later full-model GPU smoke checks for both
-architectures also passed, as recorded in the latest evidence below.
-
-## Metric regression tests
-
-Run from the project directory in an environment with PyTorch installed:
-
-```bash
-python -m unittest -v test_metrics
-```
-
-The five test methods cover perfect predictions, confusion matrix
-orientation, hand-calculated Dice/IoU, missed and falsely predicted classes,
-jointly absent classes, batch accumulation, and invalid label inputs.
-
-All five tests passed on Rangpur using CPU tensors. They use synthetic
-labels and do not require HipMRI files or a GPU.
-
-## Feasibility Review
-
-**Project:** HipMRI 2D Improved U-Net | **Student:** s4986405 | **Date:** 26 October 2026
-**Status:** Draft for tutor consultation; compulsory check-off not yet completed.
-
-### User need and engineering dilemma
-
-An imaging specialist needs an offline prototype that drafts pelvic contours for human review. The investigation asks whether a 2D Improved U-Net reduces prostate base/apex and adjacent-organ boundary errors compared with a basic 2D U-Net enough to justify extra memory and inference time. Results will address 2D architectural changes; inter-slice continuity remains a limitation.
-
-### Scope, model choice and course concepts
-
-Use the supplied HipMRI 2D slices and six label IDs, targeting the Normal difficulty option. Keep the implemented U-Net [1] as baseline. The implemented Improved model adapts residual context blocks and multi-scale segmentation outputs from Isensee et al. [2]. Their original network processes 3D brain MRI; the 2D adaptation and deviations are documented below. Eight CPU architecture tests and the shared-CLI CPU integration checks passed; real-data Improved-model CPU/GPU smoke runs also passed; matched full training and validation comparison are now complete; see [VALIDATION_RESULTS.md](VALIDATION_RESULTS.md). Convolutions, skip/residual connections and overlap-based objectives connect the design to course concepts. Both models shared preprocessing, loss, splits and the frozen training budget. Optional per-slice MRI z-score normalization and six-channel one-hot targets
-are available. Paired horizontal flips and baseline training/validation loops
-are implemented, together with checkpoint and history saving. The Improved
-model class and its training/prediction CLI integration are implemented and CPU-tested.
-
-### Preliminary evidence already obtained
-
-Filename audits found 31/4/3 patients and 11,460/660/540 slices in train/validation/test, with no shared patient IDs. One real sample loaded as image [1,256,128] and integer mask [256,128]. The default-width baseline has 1,962,422 parameters; its initial untrained forward check produced finite [1,6,256,128] logits. CPU shape/gradient checks, a two-slice pipeline check and five metric regression tests passed. The preliminary checks in this paragraph did not establish final accuracy or speed. Formal validation results obtained later are recorded in [VALIDATION_RESULTS.md](VALIDATION_RESULTS.md). Diagnostic job 700650 completed on an A100; full-model GPU smoke jobs 704509 and 704574 later completed successfully, with bounded memory observations recorded below.
-
-### Five testable acceptance criteria (proposed)
-
-1. Preserve patient separation and image/mask alignment through preprocessing, demonstrated by split checks, tests and overlays.
-2. Target prostate pooled test Dice >= 0.75; also report all-class Dice/IoU and patient-wise summaries. Confirm primary aggregation with the tutor; freeze it before training.
-3. Compare baseline and Improved models on identical held-out patients; analyse 3-5 actual boundary failures with MRI, ground truth, prediction and false-positive/false-negative overlays.
-4. Proposed resource limits: peak GPU VRAM <= 12 GiB and median model-only inference <= 100 ms per 256x128 slice at batch size 1, after warm-up and CUDA synchronization. Also report per-case runtime. Formal validation model-forward medians are now measured at 2.134 ms baseline and 5.968 ms Improved. These exclude data preparation/transfers and do not measure held-out or application latency; whole-device memory remains unverified.
-5. Record exact dependencies, seeds, configurations and checkpoint selection. Select settings on validation data; use test data only after the experiment protocol is frozen.
-
-### Risks, budget, next experiment and fallback
-
-Key risks are class imbalance, only three test patients, unverified anatomical label-ID mapping/slice ordering, missing 3D context and unverified whole-device memory use and held-out model quality. Verify metadata before prostate/base/apex analysis. Proposed initial budget: two one-hour GPU pilots, then two comparison runs capped at four GPU-hours each. The frozen v1 full-training/validation comparison is complete. Next: finish check-off, confirm label anatomy and prepare final held-out evaluation. Actual validation error overlays and their declared selection rules are documented in ERROR_ANALYSIS.md. Both models have passed bounded real-MRI GPU smoke checks. Reduce batch size/channel width if needed. If only baseline is feasible, report the Easy fallback honestly and discuss the revised scope with the tutor.
-
-### References
-
-[1] Ronneberger, Fischer and Brox (2015). *U-Net: Convolutional Networks for Biomedical Image Segmentation*. https://arxiv.org/abs/1505.04597
-
-[2] Isensee et al. (2018). *Brain Tumor Segmentation and Radiomics Survival Prediction: Contribution to the BRATS 2017 Challenge*. https://arxiv.org/abs/1802.10508
-
-Requirements checked against COMP3710/COMP7710 assessment specification v2.5, Sections 2.2 and 3. This review does not constitute tutor approval.
-
-## Artificial Intelligence Usage Disclosure
-
-### Tools and assistance
-
-OpenAI ChatGPT and Codex assisted with substantial code scaffolding and documentation drafts. Assistance covered NIfTI image/mask pairing; the PyTorch Dataset and its validation checks; baseline U-Net components and assembly; Dice/IoU metrics; inspection, visualization and regression-test scripts; Git commands; Conda/Slurm troubleshooting; assessment-requirement review; literature lookup; and drafting this feasibility review and disclosure. Subsequent assistance also covered optional MRI z-score normalization, six-channel one-hot targets, paired training flips, the Dice/CE loss, training/validation loops, checkpoint and history persistence, training-curve plotting, and checkpoint-based prediction/export, and full-model GPU smoke-job/profiling code, native-shape batching, and the paper-inspired 2D Improved model architecture and the shared architecture-selection/checkpoint-loading paths, split evaluation, patient/case metric aggregation, separated inference timing, and the matched experiment protocol/Slurm orchestration and completed-run comparison reporting with their tests. The assistance included proposing experiments and acceptance criteria; the frozen v1 training/validation experiment now has measured results, while prostate-specific held-out acceptance checks remain pending. Four validation failures and one improvement example were subsequently rendered and visually reviewed; their selected scope does not establish anatomical base/apex performance. Subsequent assistance included auditing downloaded saved records, comparing exported CSV/JSON values, reviewing three real-result plots, developing and testing the exploratory validation overlay tool, checking five actual overlays and drafting VALIDATION_RESULTS.md and ERROR_ANALYSIS.md. Assistance subsequently covered the fixed-checkpoint held-out protocol, Slurm runner, provenance/coverage checks and synthetic regression tests; all nine tests and shell syntax checks passed on Rangpur, while actual held-out execution remains pending. This disclosure does not assert use of other AI tools that has not been confirmed.
-
-### Verification performed so far
-
-The student ran the suggested commands in the local WSL repository and on Rangpur and shared the resulting terminal output for review with AI assistance. Verification included:
-
-- Checking Git diffs and maintaining progressive, scoped commits.
-- Checking Python or shell syntax for the newly created or modified files.
-- Testing NIfTI filename pairing and loading real samples with expected shapes, dtypes and label ranges.
-- Testing rejection of invalid dimensions, shape mismatches, invalid mask labels and non-finite MRI values using temporary files.
-- Auditing patient IDs across the supplied splits and testing artificial overlap cases.
-- Viewing a real MRI/mask side-by-side PNG.
-- Checking CPU forward shapes and finite gradients for model blocks and the assembled baseline.
-- Checking imports after moving the model to `modules.py`.
-- Comparing metric calculations with hand-worked examples, and running five saved metric regression tests successfully.
-- Running a two-slice end-to-end CPU pipeline check with a matching pixel count.
-- Verifying optional normalization and one-hot targets on synthetic inputs and real slices, including exact mask recovery.
-- Running paired-augmentation/one-hot tests (8), loss tests (6), and checkpoint/training-loop tests (9) successfully on CPU.
-- Running a real-data CPU optimizer step and limited two-epoch training/validation check, then checking saved history consistency and model reloading.
-- Running all five history-plot tests successfully and rendering the saved smoke history to a PNG reviewed with AI assistance.
-- Confirming Slurm job 700650 completed with exit code 0:0 and its CUDA convolution forward/backward check passed on an allocated A100 node.
-- Running all five prediction tests successfully, exporting a real validation prediction, and reviewing its aligned numeric-label/TP/FP/FN panels with AI assistance.
-- Running three memory-report unit tests plus three training-loop tests successfully on CPU and checking the Slurm script syntax. GPU smoke job 704367 later raised a heterogeneous-slice batching error in epoch 2.
-- Running six native-shape batching tests plus three training-loop tests successfully on Rangpur CPU, then confirming replacement GPU smoke job 704509 completed successfully after the original heterogeneous-shape failure.
-- Running all eight Improved-model architecture tests successfully on Rangpur CPU, including shared-loss backward/optimizer checks and baseline compatibility; the default Improved model reported 3,187,746 parameters.
-- Running all 20 shared-model-selection, prediction, training-loop and checkpoint tests successfully on Rangpur CPU, including synthetic training/save/reload/prediction for both architectures and old baseline checkpoint compatibility.
-- Running an Improved-model real-MRI CPU smoke epoch and checking saved curves, history consistency and checkpoint reloading.
-- Confirming baseline GPU job 704509 and Improved GPU job 704574 both completed with ExitCode 0:0, successful checkpoint checks and final smoke PASS markers, then reviewing their bounded allocator-memory profiles with AI assistance.
-- Running all 13 evaluation/metric regression tests successfully on Rangpur CPU and exporting a two-slice real validation smoke evaluation from Improved checkpoint 704574, with patient separation and partial scope retained.
-- Running all eight comparison-protocol/orchestration tests on Rangpur, checking the Slurm array script syntax, and inspecting partition/QoS/account wall-time records. The orchestration tests stub training children and do not establish that the formal 20-epoch jobs ran.
-
-- Running all eight comparison-reporting tests on Rangpur, including generation of three PNG figures from synthetic completed-run fixtures. Both formal tasks subsequently completed with exit code 0:0 and final PASS markers. The actual comparison export passed; downloaded saved records and all four CSVs matched recomputation, and three real-result PNGs were visually reviewed with AI assistance.
-
-- Running all eight exploratory error-analysis tests on Rangpur CPU, then rendering five selected real validation examples with the frozen runtime/checkpoints. The downloaded manifest, selected-label counts, source/weight/PNG hashes and native crop bounds were checked; all five figures were visually reviewed with AI assistance.
-
-- Running all nine held-out-orchestration tests on Rangpur, including synthetic plot rendering, and passing Slurm script syntax validation. These tests mock evaluation children and do not read the supplied test split or establish held-out results.
-
-### Current limits and responsibility
-
-Both architectures completed the formal matched 20-epoch training and three full validation passes, with successful checkpoint/record checks and Slurm exit code 0:0. Actual comparison files were audited and the three plots visually reviewed with AI assistance. The validation outcome is mixed: labels 0, 1, 2, 4 and 5 improve in pooled Dice, while label 3 declines, including a marked patient-38 decline. The Improved model uses more allocator memory and has a longer model-forward time. See VALIDATION_RESULTS.md for measurements, provenance and limitations. Four actual validation failures and one improvement example have now been rendered and reviewed with AI assistance, with explicit selection rules and reproducible TP/FP/FN counts in ERROR_ANALYSIS.md. Whole-device memory, prostate-specific test accuracy and final held-out evaluation remain unverified. Anatomical label mapping and the tutor feasibility check-off remain unresolved. The full dataset contents have not been exhaustively scanned.
-
-The student remains responsible for reviewing, understanding, correcting and explaining the submitted code, references, experimental design and report. The checks above document observed execution and do not establish that every line has received an independent manual audit. This disclosure must be updated as implementation, verification and actual AI use change. The tutor feasibility check-off remains incomplete.
-
-## Dataset provenance and label semantics
-
-### Data acknowledgement and reference
-
-Data were provided by the HiPMRI Study and accessed through the COMP3710
-teaching copy on UQ Rangpur:
-
-`/home/groups/comp3710/HipMRI_Study_open`
-
-The supplied `data_use_agreement.txt` requests acknowledgement of the data
-and citation of an applicable dataset-related publication.
-
-Dataset-related reference:
-Liu, S., Dowling, J. A., Engstrom, C., Greer, P. B., Crozier, S., and
-Chandra, S. S. (2020). *Manipulating Medical Image Translation with
-Manifold Disentanglement*.
-[Paper](https://arxiv.org/abs/2011.13615).
-
-This reference provides dataset context; its list of anatomical structures
-does not establish the numerical label mapping of the course slice files.
-
-### Label metadata audit
-
-The observed training masks contain integer label IDs 0 through 5.
-Anatomical names for these IDs remain unverified.
-
-On 26 October 2026, headers were inspected for:
-- `seg_004_week_0_slice_0.nii.gz`: shape `[256, 128]`.
-- `B006_Week0_SEMANTIC.nii.gz`: shape `[256, 256, 128]`.
-
-Both sampled headers had empty `descrip`, `aux_file`, and `intent_name`
-fields, intent `none`, and zero extensions. This finding applies to these
-two sampled headers, not an exhaustive metadata audit.
-
-Reports currently use numerical label IDs. Confirm the anatomical mapping
-and any course-specific remapping with the tutor or dataset maintainer,
-then record the source before reporting prostate-specific results.
-
-### Optional per-slice MRI normalization
-
-`HipMRI2DDataset(..., normalize=True)` enables z-score normalization
-independently for each MRI slice. The calculation includes every pixel,
-including background, and uses population standard deviation
-(`unbiased=False`). Statistics are computed in float64 and the output
-image remains float32 with shape `[1, H, W]`.
-
-Constant slices return zero-valued images. Integer masks are unchanged.
-The default `normalize=False` preserves the loaded MRI values.
-No dataset-wide statistics are fitted or shared between splits.
-
-Enable normalization in the batch inspection script:
-
-```bash
-python check_dataset.py \
-  --image-dir /path/to/images \
-  --mask-dir /path/to/masks \
-  --batch-size 2 \
-  --normalize
-```
-
-Rangpur CPU checks passed for ordinary, zero, constant, tiny-value and
-large-value synthetic images, including comparison with a NumPy reference.
-The default raw values and mask labels were preserved.
-
-One real training slice had normalized mean approximately -4.66e-9 and
-population standard deviation 1.0. A normalized batch of two real slices
-also passed shape and dtype checks.
-
-Normalization is currently enabled explicitly through the Dataset option
-or `check_dataset.py --normalize`. The existing pipeline smoke script
-continues to use the default raw-image setting.
-
-### Optional six-channel one-hot masks
-
-The Dataset defaults to `one_hot=False`, returning integer labels with shape
-`[H, W]` and dtype `torch.long`. Set `one_hot=True` to return a float32 mask
-with shape `[6, H, W]`. Channel k represents numerical label ID k (0 through 5).
-All six channels are retained when some classes are absent from a slice.
-Anatomical names for these numerical IDs remain unverified.
-
-Each pixel has exactly one active channel. Taking `argmax(dim=0)` on a single
-encoded mask recovers the integer labels exactly. MRI values are unaffected
-by the encoding option. `normalize=True` and `one_hot=True` can be used together.
-Existing mask validation runs before encoding, so invalid labels are rejected.
-
-```python
-from dataset import HipMRI2DDataset
-
-dataset = HipMRI2DDataset(image_dir, mask_dir, normalize=True, one_hot=True)
-image, target = dataset[0]
-```
-
-Run the synthetic regression tests from the project directory:
-
-```bash
-python -m unittest -v test_one_hot
-```
-
-All three test methods passed on Rangpur CPU. They cover spatial alignment,
-optional normalization, fixed channels for absent classes, batching and rejection
-of invalid masks. A separate check on two real training slices produced targets
-of shape `[2, 6, 256, 128]` with dtype float32. Every pixel had one active channel,
-argmax recovered the original masks exactly, and the normalized images matched
-those loaded with integer targets. These checks validate encoding correctness;
-they do not measure segmentation accuracy.
-
-### Paired training augmentation
-
-Set both `training=True` and `augment=True` to enable a random horizontal
-flip with probability 0.5 per sample. Horizontal refers to the last array axis.
-The same random decision is used for the MRI image and its integer mask.
-Flipping preserves spatial dimensions, MRI values and numerical label IDs;
-it requires no spatial interpolation.
-
-The flip runs after input validation and before MRI normalization and one-hot
-encoding. It supports either target representation and either normalization
-setting. Both new options default to False. Requesting `augment=True` without
-`training=True` raises ValueError. Split roles are supplied by the caller;
-they are not inferred from directory names. Keep augmentation disabled for
-validation, test and inference.
-
-```python
-train_dataset = HipMRI2DDataset(
-    train_image_dir, train_mask_dir,
-    normalize=True, one_hot=True, training=True, augment=True,
-)
-val_dataset = HipMRI2DDataset(
-    val_image_dir, val_mask_dir, normalize=True, one_hot=True,
-)
-```
-
-Random decisions use the PyTorch RNG. A fixed `torch.manual_seed(...)` makes
-the tested single-process sample sequence reproducible. Future training code
-must also configure DataLoader shuffling and worker seeds as applicable.
-
-```bash
-python -m unittest -v test_augmentation test_one_hot
-```
-
-All eight synthetic test methods passed on Rangpur CPU: five augmentation
-tests and three one-hot tests. They verify both random branches, image-mask
-alignment, the training guard, disabled augmentation using no random draw,
-normalized one-hot batches, seed reproducibility, missing classes and invalid
-mask rejection. This check does not establish a segmentation accuracy benefit.
-
-### Shared segmentation loss and CPU training-step check
-
-`losses.py` defines `dice_ce_loss(logits, targets)`. This project uses an
-unweighted sum of pixel cross-entropy and soft Dice loss as a shared objective
-for the planned baseline/improved comparison. This is an implementation choice.
-
-Both tensors have shape `[B, C, H, W]` (C=6 for this project). Logits are raw
-floating-point scores; targets are float one-hot masks with exactly one active
-channel per pixel. Shape, device, finite values and target validity are checked.
-
-Cross-entropy is averaged over all batch pixels. For each channel, soft Dice
-pools predicted probabilities and targets across batch and spatial dimensions:
-
-`Dice_c = (2 * sum(probability_c * target_c) + 1e-5) / (sum(probability_c) + sum(target_c) + 1e-5)`
-
-`Loss = CrossEntropy + 1 - mean(Dice_c)`
-
-Every channel, including numerical label 0, contributes equally to the Dice
-average. There are no class weights. Softmax/log-softmax are calculated inside
-the loss. Float16/bfloat16 inputs are promoted to float32; float64 logits retain
-float64 calculation. The differentiable soft Dice objective is separate from
-the hard-label Dice/IoU reporting metrics and their jointly-absent-class NaN policy.
-
-```bash
-python -m unittest -v test_losses
-python check_training_step.py
-```
-
-All six loss test methods passed on Rangpur CPU. Checks cover a hand-calculated
-uniform prediction, correct versus incorrect predictions, large finite logits
-and gradients, joint channel permutations, invalid inputs and a U-Net optimizer
-update on synthetic data.
-
-The separate training-step smoke check loaded two real training slices with
-normalization, paired augmentation and one-hot targets, then ran a base-width-4
-U-Net and one Adam step on CPU. Image shape was `[2, 1, 256, 128]`; targets were
-`[2, 6, 256, 128]`. One observed pre-update loss was approximately 3.03997.
-Finite gradients, finite updated parameters and a parameter change were verified.
-
-The script defaults to the Rangpur teaching dataset; use `--data-root` to select
-another directory containing the training image and mask folders. It saves no
-checkpoint and reports no segmentation accuracy. CPU backward emitted a CUDA
-driver warning, but both CPU checks completed successfully. A subsequent Slurm
-CUDA convolution test passed. Bounded GPU training checks for both models
-have since passed; see the latest real-MRI evidence below.
-
-### Baseline training and validation loops
-
-`train.py` now connects normalized MRI slices, one-hot masks, the baseline
-U-Net, the shared Dice/CE objective, Adam and per-class Dice/IoU reporting.
-Before creating the loaders, it uses `check_splits.collect_patients` to reject
-train/validation patient overlap. It uses the supplied training and validation
-folders and does not open the test split.
-
-Training shuffles samples and enables parameter updates. `--augment` optionally
-enables paired training flips. Validation disables augmentation and autograd and
-sets the model to evaluation mode. It preserves parameters, running buffers and
-existing gradients. The default loader configuration uses zero worker processes;
-the global PyTorch RNG and the separate shuffle generator use `--seed` (3710 by
-default).
-
-`run_epoch` reports a sample-weighted average of per-batch objective values.
-The soft Dice term is pooled within each batch, so this average is not a soft
-Dice objective recomputed over the whole split. Hard-label metrics are computed
-from one confusion matrix accumulated over all processed pixels. Jointly absent
-classes retain NaN, and results use numerical label IDs.
-
-Run a bounded CPU check from the project directory:
-
-```bash
-python -m unittest -v test_train
-python -u train.py \
-  --data-root /home/groups/comp3710/HipMRI_Study_open/keras_slices_data \
-  --output-dir "$HOME/hipmri_runs/baseline_smoke_$(date +%Y%m%d_%H%M%S)" \
-  --epochs 1 --batch-size 2 --base-channels 4 --device cpu --augment \
-  --max-train-batches 1 --max-val-batches 1
-```
-
-The defaults are one epoch, batch size 2, base width 4, CPU, learning rate 1e-3,
-one batch per phase and no augmentation. A batch limit of 0 processes every
-batch in that phase. Nonzero limits print PARTIAL RUN: their metrics describe
-only the processed subset and are not final evaluation results. This version
-requires a new --output-dir and saves checkpoints and epoch histories.
-
-All three training-loop test methods passed on Rangpur CPU. They verify parameter
-updates and the batch limit, validation with no gradients or model-state changes,
-pooled confusion counts including an incomplete final batch, and rejection of
-empty loaders and invalid limits.
-
-The initial loop-only smoke run verified 31 training patients and 4 validation patients
-with no overlap. Each phase processed two slices and 65,536 pixels. One observed
-training loss was 2.931334 and validation loss was 2.962813. Validation label 5
-had NaN Dice/IoU because it was absent from both predictions and targets in that
-batch. The run ended with `Training/validation run: PASS`. This was one CPU
-training batch followed by one validation batch; no trained checkpoint or final
-accuracy result was produced. The separate Slurm CUDA diagnostic has since
-passed. Later full-model GPU smoke checks for both architectures passed;
-see the latest real-MRI evidence below.
-
-### Checkpoints and epoch histories
-
-Training now requires `--output-dir` naming a new run directory. An existing
-directory is rejected to protect earlier runs. Each completed epoch writes:
-
-- `last.pt`: the latest model and optimizer checkpoint.
-- `best.pt`: the first epoch with the lowest validation loss so far; ties retain
-  the earlier checkpoint. Training loss and test data do not select it.
-- `config.json`: run arguments, model and preprocessing settings, loss settings,
-  patient lists/counts, source-file SHA-256 hashes and Python/PyTorch versions.
-- `history.json` and `history.csv`: losses, processed counts and per-class
-  Dice/IoU for each epoch. JSON also retains confusion matrices.
-
-Checkpoints contain model and Adam state dictionaries, architecture and channel
-configuration, epoch, best validation loss/epoch, history, configuration, and
-PyTorch/shuffle RNG states (plus CUDA RNG states when running on CUDA). Tensor
-snapshots are stored on CPU and loaded with `weights_only=True`. Files are
-replaced atomically individually; this is not a multi-file transaction.
-
-Jointly absent metric values are stored as JSON null and empty CSV fields.
-Non-finite loss values are rejected. `partial_run` records whether either phase
-was batch-limited; such checkpoints are execution checks, not final models.
-
-```bash
-python -m unittest -v test_training_io test_train
-python check_checkpoint.py --run-dir /path/to/run
-```
-
-The six checkpoint test methods cover model output equality after reloading,
-restored Adam producing the same next update, validation-only best selection,
-JSON/CSV handling, protection of existing run directories, invalid losses/epoch
-numbers and retained RNG metadata. Together with the three loop tests, the
-combined command runs nine tests; all nine passed on Rangpur CPU.
-
-A two-epoch Rangpur CPU smoke run processed one two-slice training batch and one
-two-slice validation batch per epoch. The latest and best checkpoints both
-corresponded to epoch 2; its validation loss was approximately 2.959447.
-`check_checkpoint.py` confirmed two history entries, agreement between JSON,
-CSV row counts and the latest checkpoint, minimum-loss selection, and strict
-model loading with finite output. Both history consistency and checkpoint
-reload checks passed. The saved run was marked `partial_run=True`.
-
-The CLI currently starts fresh runs; automatic resume is not yet implemented.
-The saved optimizer/RNG states provide the information for adding resume support.
-The single-step script `check_training_step.py` still saves no checkpoint.
-Model weight extensions (`*.pt`, `*.pth`, `*.ckpt`) and the project's `/runs/`
-directory are ignored by Git. Runtime outputs should remain outside source
-control. No final segmentation accuracy is established. Bounded full-model
-GPU training/profile checks have since passed for both architectures; see the
-latest real-MRI evidence below.
-
-### Training history plots
-
-`plot_history.py` reads the saved `config.json` and `history.json` and exports
-`training_curves.png`. It displays train/validation loss and separate panels
-for train/validation per-class Dice and IoU. Colors consistently represent
-numerical label IDs 0 through 5; no anatomical mapping or class-average metric
-is inferred. Metric axes use the full 0-1 score range.
-
-Curves use raw recorded epoch values without smoothing. JSON null scores are
-converted to missing plot points, preserving gaps instead of inventing zeros.
-A label undefined for every plotted epoch is annotated in that panel.
-The title includes architecture, base channel width and an explicit PARTIAL RUN
-marker whenever the saved configuration reports a batch-limited run.
-
-After a new training loop completes, `train.py` automatically creates the PNG
-in its run directory. Source-file hashes for new runs include `plot_history.py`.
-Existing runs can be plotted separately without loading weights or retraining:
-
-```bash
-python -m unittest -v test_plot_history
-python plot_history.py --run-dir /path/to/run
-```
-
-The output defaults to the run directory. To preserve existing figures, the
-script refuses to overwrite an output file. Use `--output /path/to/new.png`
-when another export is needed. Matplotlib uses the non-interactive Agg backend.
-
-All five plot test methods passed on Rangpur: raw values and null handling,
-invalid histories, missing run-scope metadata, PNG rendering for one/two epochs,
-and existing-output protection. A PNG was also rendered from the real two-epoch
-CPU smoke history and visually reviewed. Titles, axes and legend were readable;
-validation label 5 was correctly marked undefined throughout. These two epochs
-each used one batch per phase; the figure demonstrates the plotting workflow
-and does not establish convergence or final segmentation quality.
-
-### Completed CUDA diagnostic
-
-On 27 October 2026, Slurm accounting and the saved diagnostic log were checked
-for job 700650. The observed results were:
-
-| Item | Observed result |
-| --- | --- |
-| Slurm state / exit code | COMPLETED / 0:0 |
-| Allocated node | a100-1 |
-| GPU | NVIDIA A100-PCIE-40GB |
-| NVIDIA driver | 590.48.01 |
-| NVIDIA-SMI CUDA version field | 13.1 |
-| PyTorch / PyTorch CUDA build | 2.14.0+cu130 / 13.0 |
-| CUDA availability | True |
-| Convolution forward/backward and finite gradients | PASS |
-
-The CPU login-node warning does not describe this allocated node's successful
-diagnostic. The result establishes this small CUDA operation, not U-Net GPU
-training, peak VRAM, inference latency or segmentation quality. The five-minute
-allocation has ended; subsequent GPU work must obtain a new Slurm allocation.
-
-### Checkpoint-based prediction and aligned exports
-
-`predict.py` loads a baseline UNet2D checkpoint with its saved channel width and
-normalization setting, sets evaluation mode, disables autograd and augmentation,
-and predicts one image/mask pair selected by `--index`. Targets remain integer
-label IDs for metrics. The current script requires paired masks for its
-qualitative/metric export and supports the baseline architecture only.
-
-An existing output directory is rejected. A new output directory receives:
-
-- `prediction.png`: MRI, ground truth, prediction and a selected-label overlap
-  panel. Green denotes TP, red FP and blue FN for the requested numeric label.
-- `prediction.nii.gz`: uint8 numerical labels with the input image's 2D shape
-  and affine. The stored array grid is preserved without transposing/resizing.
-- `prediction.json`: checkpoint epoch/source, partial-run flag, preprocessing,
-  confusion matrix, per-class Dice/IoU and selected-label TP/FP/FN counts.
-  Jointly absent scores are recorded as null.
-
-`--label-id` explicitly selects a numerical ID from 0 through 5. Anatomical
-names remain unverified. A partial checkpoint is refused by default;
-`--allow-partial` explicitly permits a smoke check and both the figure and JSON
-retain that status. It does not turn the checkpoint into a final trained model.
-
-```bash
-python -m unittest -v test_predict
-python predict.py \
-  --checkpoint /path/to/run/best.pt \
-  --image-dir /path/to/validation_images \
-  --mask-dir /path/to/validation_masks \
-  --output-dir /path/to/new_prediction \
-  --index 0 --label-id 1 --device cpu --allow-partial
-```
-
-All five prediction test methods passed on Rangpur CPU. They check checkpoint
-metadata/partial-run guards, saved channel width and inference without gradients,
-a hand-calculated TP/FP/FN map, NIfTI shape/affine/dtype and score consistency,
-PNG rendering, and protection of existing prediction outputs.
-
-A separate real validation check used the epoch-2, base-width-4 partial checkpoint
-on `case_036_week_0_slice_0.nii.gz`. The prediction shape was `[256, 128]` and
-normalization was per-slice z-score. For numerical label 1, the observed counts
-were TP=0, FP=0, FN=25191. Prediction export completed and the downloaded PNG
-was visually reviewed: panels, numeric color scale, partial-checkpoint title
-and blue FN overlay were consistent with the reported result. The prediction
-panel was dominated by label 4. This smoke checkpoint has only two limited CPU
-updates and provides no valid evidence of useful segmentation quality.
-
-NIfTI inputs/outputs (`*.nii`, `*.nii.gz`) are ignored by Git alongside model
-weights. Runtime predictions remain outside the source repository. The held-out
-test split was not used in this prediction check.
-
-### Full U-Net GPU smoke job and allocator profiling
-
-`gpu_train_smoke.sbatch` requests one A100 and one CPU from partition/account
-`comp3710` for at most five minutes. It runs the complete baseline U-Net at
-base width 16 and batch size 2 for two epochs, each limited to two training
-batches and one validation batch. Training uses normalization, one-hot targets,
-paired augmentation and the shared Dice/CE objective. The test split is unused.
-This bounded run is an execution/resource check, not a final training experiment.
-
-The script must be submitted with `sbatch`; it rejects direct execution without
-a Slurm job allocation. Its run directory is
-`$HOME/hipmri_runs/unet_gpu_smoke_JOB_ID` and its submission-directory log is
-`unet-gpu-smoke-JOB_ID.log`. After training it checks checkpoint/history
-consistency and prints the GPU profile. Only successful completion of all
-commands prints `U-Net GPU smoke check: PASS`.
-
-For CUDA runs, `train.py` resets peak statistics before model creation and
-`gpu_profile.py` synchronizes CUDA before saving `gpu_profile.json`. The report
-contains peak allocated/reserved bytes and GiB, device capacity/name, allocator
-backend, node/job ID, model configuration, processed sample counts and run scope.
-Timing includes preparation, checkpoint I/O and plotting; it is not inference
-latency. CPU runs do not invoke the CUDA profiling path.
-
-These are PyTorch tensor/allocator memory statistics, not whole-device memory
-from NVIDIA-SMI. No resource-target result is claimed before a real GPU run is
-reviewed. API references:
-[peak allocated](https://docs.pytorch.org/docs/2.14/generated/torch.cuda.memory.max_memory_allocated.html),
-[peak reserved](https://docs.pytorch.org/docs/2.14/generated/torch.cuda.memory.max_memory_reserved.html).
-
-```bash
-python -m unittest -v test_gpu_profile test_train
-bash -n gpu_train_smoke.sbatch
-sbatch gpu_train_smoke.sbatch
-```
-
-Submit once and use the returned job ID to inspect progress:
-
-```bash
-sacct -j JOB_ID -X --format=JobID,State,ExitCode,NodeList
-cat unet-gpu-smoke-JOB_ID.log
-```
-
-All six CPU tests passed: three memory-accounting tests (known byte/GiB values
-and invalid counters/times) and three existing training-loop tests. Shell syntax
-validation also passed. Job 704367 subsequently saved epoch 1 but raised a
-DataLoader stacking error in epoch 2: image tensors [1, 256, 128] and
-[1, 256, 144] occurred in the same batch. It did not reach the final
-checkpoint/history checks, GPU profile export or smoke-check PASS marker.
-After the native-shape batching fix described below, replacement job 704509
-completed with state COMPLETED, ExitCode 0:0 on a100-5 and the final GPU smoke
-PASS marker. Its bounded profile is recorded in the latest evidence below.
-The earlier job 700650 validated only a small CUDA convolution.
-
-The previously transcribed real-prediction FN count was corrected from 23919
-to 25191 against the terminal output; TP=0 and FP=0 were unchanged. GPU job logs
-matching `unet-gpu-smoke-*.log` are ignored by Git.
-
-### Native-shape batches for heterogeneous MRI slices
-
-The training data include different native image widths; the previously inspected
-256-by-128 slice is an example, not a fixed size for the entire dataset.
-`ShapeBatchSampler` reads image header shapes and groups indices by (height,
-width). Every batch contains one shape. It retains the final, possibly smaller
-batch of each group and covers every sample once in a full epoch.
-
-Images and masks retain their native pixel grid. No resizing, cropping or padding
-is introduced. Dataset checks still reject invalid labels and mismatched masks.
-Training shuffles indices within each shape and then shuffles batch order using
-the recorded generator. Validation uses deterministic groups and order.
-
-The requested batch size is an upper bound; small groups can produce smaller
-batches. Hard Dice/IoU still use the confusion matrix pooled over all original
-pixels. Reported epoch loss remains the sample-weighted mean of batch losses.
-The batch construction must be held fixed between baseline and Improved-model
-comparisons. Short runs with batch limits cover only a subset and do not establish
-segmentation quality, regardless of their reported metric values.
-
-`config.json` records the batching strategy, per-split shape/sample counts and
-that final batches are retained. Source hashes include `shape_batching.py`.
-No changes to the model, loss or metric functions are required for this fix.
-
-```bash
-python -m unittest -v test_shape_batching test_train
-```
-
-All nine test methods passed on Rangpur CPU on 27 October 2026. Six new tests
-cover complete index coverage with incomplete batches, unchanged image pixels
-and one-hot masks, reproducible shuffling, invalid batch sizes/non-2D images,
-continued rejection of mismatched masks, and pooled pixel accounting across
-three native shapes (all 7,680 fixture pixels). The three existing training-loop
-tests also passed, including parameter updates and validation-state isolation.
-This establishes CPU regression checks, not successful GPU execution.
-
-Original job 704367 and its existing artifacts are retained. Replacement job
-704509 uses the same bounded baseline settings and its own job-specific log/run
-directory. It subsequently completed successfully with a GPU profile and
-checkpoint checks, as recorded below. No final segmentation result is claimed.
-
-### ImprovedUNet2D architecture and CPU verification
-
-`modules.py` now also provides `ImprovedUNet2D`. The existing `UNet2D` baseline
-class remains available. This implementation adapts the architectural ideas in
-Isensee et al. [2] to single-channel, six-class 2D HipMRI slices:
-[original paper, architecture in section 2.1](https://arxiv.org/pdf/1802.10508).
-
-The encoder uses widths b, 2b, 4b, 8b and 16b. Its context blocks add an identity
-skip around two pre-activation 3-by-3 convolutions with Dropout2d (default 0.3)
-between them. Pre-activation uses affine InstanceNorm2d and LeakyReLU (0.01).
-Stride-2 convolutions connect encoder levels. Each decoder stage resizes features
-to the exact skip size with nearest interpolation, reduces channels, concatenates
-the skip, and applies 3-by-3 then 1-by-1 localization convolutions.
-
-Three segmentation heads at quarter, half and full decoder resolution are
-aligned to the input grid and summed as raw logits. The shared Dice/CE objective
-is applied to that sum; no separate auxiliary losses are attached. `forward_heads`
-returns the three aligned maps for inspection. Default b=16 gives 3,187,746
-parameters, versus 1,962,422 for the baseline at the same width. These counts
-were observed in CPU tests, not inferred from GPU memory usage.
-
-```python
-import torch
-from modules import ImprovedUNet2D
-
-model = ImprovedUNet2D(base_channels=16).eval()
-with torch.no_grad():
-    logits = model(torch.randn(1, 1, 256, 128))  # [1, 6, 256, 128]
-```
-
-Height and width must each be at least 32. This conservative guard keeps multiple
-spatial values at the deepest InstanceNorm layer. Exact skip-size interpolation
-also supports odd dimensions; input channel counts are checked explicitly.
-
-This is a 2D adaptation, not an exact reproduction of the paper's 3D brain-MRI
-system. Current choices include whole-slice processing, per-slice all-pixel
-z-score normalization, the shared Dice-plus-cross-entropy loss and paired flips.
-The original 3D preprocessing, full augmentation/training schedule and test-time
-ensemble procedure are not reproduced. No superiority over the baseline is
-claimed before matched experiments.
-
-```bash
-python -m unittest -v test_improved_model
-```
-
-All eight tests passed on Rangpur CPU on 27 October 2026. They cover the default
-MRI output shape and finite logits; odd dimensions/configurable channels;
-residual identity and input gradients; contribution of all three raw-logit
-heads; finite shared-loss gradients and an optimizer update; deterministic eval
-without dropout RNG consumption; invalid input/configuration rejection; and
-strict state reloading/output equivalence of the existing baseline.
-
-`train.py`, `predict.py` and `check_checkpoint.py` now support both architectures
-through the shared factory described below. CPU integration tests use synthetic
-data. Subsequent Improved-model real-MRI CPU and GPU smoke runs passed;
-its bounded GPU profile is recorded below. Formal matched training and validation
-have since completed (see VALIDATION_RESULTS.md); final held-out evaluation remains pending. Architecture/CLI tests and the Improved GPU job used a separate
-scratch directory from baseline GPU job 704509. Label anatomy and the tutor
-check-off remain unresolved.
-
-### Shared model selection and checkpoint consumers
-
-`model_factory.py` constructs the explicit supported architectures `UNet2D`
-and `ImprovedUNet2D`. Training defaults to `UNet2D`, preserving the previous CLI
-behavior. Select the other model using `--architecture ImprovedUNet2D`; both use
-the same dataset, native-shape batches, augmentation option, loss, metrics and
-recorder. The existing CLI base-width default is 4. Improved-model dropout is
-currently fixed at 0.3 in training and is recorded in `model_config`.
-
-For example, a bounded CPU check with a new output directory is:
-
-```bash
-python train.py \
-  --data-root /path/to/keras_slices_data \
-  --output-dir /path/to/new_improved_smoke_run \
-  --architecture ImprovedUNet2D \
-  --epochs 1 --batch-size 2 --base-channels 4 --device cpu --augment \
-  --max-train-batches 1 --max-val-batches 1
-```
-
-This example is an execution check, not a completed experiment. Positive batch
-limits mark the saved run as partial. The default CLI still starts a new run;
-checkpoint restore for prediction does not implement training resume.
-
-Checkpoints retain their architecture and exact model configuration. Prediction
-and checkpoint inspection restore those fields through the same factory, using
-strict state loading. Unknown architectures, invalid channel/dropout settings,
-conflicting nested/top-level model metadata and incompatible state dictionaries
-are rejected. Early baseline checkpoints with explicit top-level architecture
-and width remain supported even when nested config fields were omitted.
-
-`check_checkpoint.py` checks saved history/selection consistency and reloads the
-saved model with a finite 32-by-32 CPU probe suitable for both architectures.
-Prediction figures print the saved architecture; `prediction.json` also records
-it and the model configuration. Prediction keeps the existing partial-checkpoint
-guard and numerical-label reporting. Source hashes include `model_factory.py`.
-
-```bash
-python -m unittest -v test_model_factory test_predict test_train test_training_io
-```
-
-All 20 tests passed on Rangpur CPU on 27 October 2026: six new factory/integration
-tests, five prediction tests, three training-loop tests and six checkpoint tests.
-The new tests cover configured model construction, metadata/configuration guards,
-strict weight compatibility, old baseline prediction and the full CLI path for
-both models. Each CLI path trains for one epoch on tiny synthetic NIfTI fixtures
-with two native sizes, saves checkpoints and curves, checks the run and exports
-a validation prediction. The baseline test omits `--architecture` to verify the
-old default. Each fixture split contributes two samples and 2,560 original pixels.
-
-These CPU results validate integration and regression behavior. They do not
-establish real-data Improved-model learning, GPU memory use, inference speed or
-segmentation accuracy by themselves. Subsequent real-MRI checks are recorded
-below. Baseline GPU job 704509 completed successfully using a separate scratch
-directory; Improved GPU job 704574 also completed successfully.
-
-### Verified real-MRI smoke runs for both architectures
-
-On 27 October 2026, both bounded GPU jobs completed with Slurm state COMPLETED,
-ExitCode 0:0, successful history/checkpoint reloading and their final smoke PASS
-markers. Each used one NVIDIA A100-PCIE-40GB, native-shape batches, base width 16,
-requested batch size 2, paired training flips and the shared normalization/loss.
-Each completed two epochs limited to two training batches and one validation
-batch per epoch: four train samples and two validation samples in each epoch.
-Both saved `partial_run=true`; neither used the held-out test split.
-
-| Observation | Baseline UNet2D | ImprovedUNet2D |
-|---|---:|---:|
-| Slurm job | 704509 | 704574 |
-| Node | a100-5 | a100-9 |
-| Peak allocated bytes | 126316032 | 289378304 |
-| Peak allocated GiB | 0.117641 | 0.269505 |
-| Peak reserved bytes | 159383552 | 329252864 |
-| Peak reserved GiB | 0.148438 | 0.306641 |
-| Observed run wall time, seconds | 25.32 | 25.48 |
-
-Both reported PyTorch 2.14.0+cu130, PyTorch CUDA build 13.0 and the native
-allocator backend. Improved-model dropout was 0.3. Memory observations are
-PyTorch tensor/allocator peaks, not whole-device NVIDIA-SMI measurements. Wall
-time includes data preparation, checkpoint I/O and plotting; it is not model-only
-inference latency. These are single short jobs on different A100 nodes, without
-repeat timing trials. Their close wall times and small validation losses do not
-establish speed or segmentation-quality superiority. Resource measurements must
-be repeated for the actual training/evaluation configuration.
-
-Saved GPU runs are outside the source repository:
-- `$HOME/hipmri_runs/unet_gpu_smoke_704509`
-- `$HOME/hipmri_runs/improved_gpu_smoke_704574`
-
-The baseline ran from `$HOME/hipmri_commit6_check`; the Improved model ran from
-`$HOME/hipmri_improved_checks`. Their saved source hashes/configuration records
-preserve the distinct runtime snapshots. Original failed job 704367 and its
-existing artifacts were retained after the native-shape batching fix.
-
-`gpu_improved_smoke.sbatch` requests the same A100/CPU/count/time settings as the
-baseline script, with explicit `--architecture ImprovedUNet2D`. It uses a unique
-`improved_gpu_smoke_JOB_ID` run directory and `improved-gpu-smoke-JOB_ID.log` log.
-Its five-minute limit, fail-on-error behavior, checkpoint check and final PASS
-marker bound and verify the diagnostic. Shell syntax validation passed before
-job 704574 was submitted. Both GPU log patterns are ignored by Git.
-
-The Improved model also passed a separate CPU real-MRI smoke run at base width 4
-and seed 3710, saved under
-`$HOME/hipmri_runs/improved_cpu_smoke_20261027_170503`. One epoch processed one
-train batch and one validation batch, each with two samples / 65,536 pixels.
-Training/validation, history consistency and checkpoint reload reported PASS;
-curves were saved and the checkpoint retained `partial_run=true`.
-
-Image-header grouping reported 11,400 training slices of shape [256,128] and
-60 of shape [256,144], plus 660 validation slices of shape [256,128]. Patient
-separation passed for 31 training and four validation patients. These header
-counts do not constitute an exhaustive image/mask contents audit. Formal full
-training, patient-level validation and repeated GPU forward timing have since
-completed; see VALIDATION_RESULTS.md. Final held-out evaluation, anatomical
-label mapping and tutor check-off remain pending. Actual validation overlays have since been produced and reviewed in ERROR_ANALYSIS.md.
-
-### Split evaluation, patient metrics and inference timing
-
-`evaluate.py` restores either architecture from its checkpoint and evaluates
-numerical labels 0-5 at native slice sizes, with inference batch size 1. It uses
-the saved normalization setting and disables training augmentation and autograd.
-Confusion counts are pooled over original pixels independently at global,
-patient and patient/week-case levels. It does not average slice Dice scores.
-A case means one patient/week acquisition; patient results combine all included
-weeks. CSV rows include TP/FP/FN, target/prediction counts and Dice/IoU for each
-numerical label. No label ID is assumed to be the prostate.
-
-Input checks compare evaluation patients with the checkpoint's training and
-validation IDs. Validation patient IDs and total slice count must match the saved
-split metadata. Duplicate patient/week/slice identifiers are rejected. Validation
-smoke checks can explicitly allow partial checkpoints or limit selected samples;
-these remain marked in JSON and every CSV. Test mode requires a non-partial
-checkpoint, no sample limit, and patients disjoint from both training and
-validation. The actual test split must remain unused until the experiment
-protocol is frozen. Test-mode regression fixtures use temporary synthetic data.
-
-Each selected shape is warmed up three times by default. Model-forward timing
-excludes image loading, preprocessing, input transfer, argmax and metrics. CUDA
-is synchronized before and after the measured forward call, consistent with
-[PyTorch's synchronization API](https://docs.pytorch.org/docs/2.14/generated/torch.cuda.synchronize.html).
-One forward is timed per selected slice; medians are reported overall and by
-native shape. This is a stated sampling protocol, not repeated-trial latency
-confidence estimation. GPU timing and repeated trials remain necessary for the
-resource comparison.
-
-Per-case processing time separately includes slice I/O, preprocessing, transfers,
-forward execution, argmax and confusion accumulation; it excludes shape warmup
-and result export. Patient processing time sums its included cases. Checkpoint
-SHA256 is checked before and after evaluation to detect concurrent modification.
-Saved checkpoint provenance and current evaluator/dependency source hashes are
-recorded. Evaluation always requires a new output directory.
-
-Output files are:
-
-- `evaluation.json`: configuration, scope, provenance, confusion matrices,
-  per-class results and timing details.
-- `pooled_metrics.csv`, `patients_metrics.csv`, `cases_metrics.csv` and
-  `slice_metrics.csv`: numeric-label metrics and scope flags.
-- `case_times.csv`: processing time for each included patient/week case.
-
-Absent classes receive JSON null and empty CSV metric cells when absent from
-both prediction and target. Missed or falsely predicted classes receive zero
-overlap as appropriate. The existing output directory is preserved on refusal.
-
-```bash
-python -m unittest -v test_evaluate test_metrics
-python evaluate.py \
-  --checkpoint /path/to/run/best.pt \
-  --data-root /path/to/keras_slices_data \
-  --split validate --output-dir /path/to/new_evaluation --device cpu \
-  --max-samples 2 --allow-partial
-```
-
-All 13 test methods passed on Rangpur CPU on 27 October 2026: eight new evaluation
-tests plus five existing metric tests. Coverage includes hand-calculated global
-and patient scores across different native sizes, absent-class serialization,
-subset/partial/test guards, patient/count/filename checks, non-finite output,
-checkpoint modification and preserving existing outputs.
-
-A subsequent real validation check used the partial Improved GPU checkpoint
-`$HOME/hipmri_runs/improved_gpu_smoke_704574/best.pt`. It processed only 2 of 660
-validation slices, representing one patient and one case. Patient separation and
-evaluation export passed, with `smoke_only=true`. Outputs were saved under
-`$HOME/hipmri_runs/improved_eval_smoke_20261027_173139`.
-
-Numerical label 4 was absent from both predictions and targets, so its overlap
-metrics were undefined. Other two-slice scores do not establish generalization,
-prostate accuracy or superiority over the baseline. The observed CPU median
-model-forward time was about 133.56 ms over just two timed forwards after warmup;
-it is a pipeline check, not a GPU latency result. Full validation/test evaluation
-on fully trained checkpoints and repeated GPU timing have since completed for validation; final held-out evaluation remains pending.
-
-### Frozen full-training comparison protocol v1
-
-`comparison_protocol.json` fixes the initial comparison before full training.
-Protocol ID is `hipmri-2d-comparison-v1`, dated 27 October 2026. The two models
-share the following configuration; Improved-model dropout remains 0.3 as part
-of its architecture. This compares complete model designs, not individual
-architectural ablations.
-
-| Setting | Both models |
+| Evidence | Observed status |
 |---|---|
-| Architecture runs | UNet2D and ImprovedUNet2D |
-| Epochs | 20 complete epochs each |
-| Base channels / batch size | 16 / 2 |
-| Optimizer / learning rate | Adam / 0.001, constant |
-| Training seed | 3710 |
-| Data | 11,460 training slices / 31 patients; 660 validation slices / 4 patients |
-| Preprocessing | Per-slice all-pixel z-score; six-class one-hot targets |
-| Training augmentation | Paired last-axis flips with probability 0.5 |
-| Loss | Shared Dice plus cross-entropy, unchanged weights/smoothing |
-| Batch limits | Both 0, meaning all train/validation batches |
-| Checkpoint selection | Minimum full-validation loss; earliest epoch on ties |
-| After-training evaluation | Three complete validation passes at batch size 1 |
-| Timing warmup | Three forward calls per selected shape before measurement |
-| Requested resources | One A100 and one CPU per model, at most four hours each |
+| Matched training and full validation | Completed; both Slurm tasks exited 0:0 and printed PASS |
+| Validation result records and figures | Downloaded, recomputed and visually reviewed with AI assistance |
+| Five real validation overlays | Completed and reviewed; diagnostic examples selected post hoc |
+| Fixed-model held-out evaluation | Completed locally: both models, three full passes each, 540/540 slices per pass |
+| Anatomical mapping and prostate Dice target | Unverified; keep numeric IDs |
+| Tutor feasibility check-off | Not completed |
+| Whole-device peak VRAM | Unverified; allocator measurements reported separately |
 
-Twenty epochs is the fixed initial training budget, not a claim of convergence
-or target accuracy. A seed is recorded but bitwise deterministic CUDA training
-is not claimed. Three validation/timing passes reuse the same selected weights;
-they are not three independent training seeds. Anatomical label mapping must
-come from the tutor/dataset metadata and be recorded independently of observed
-class scores before final held-out reporting. Tutor check-off remains pending.
+This report describes an experimental prototype. It does not establish clinical suitability, an approved feasibility check-off, or independent replication across training seeds.
 
-`run_comparison.py` validates the protocol, expected train/validation slice and
-patient counts, paired masks and patient separation. It never inspects the real
-test split. Each task creates a new output directory, saves the exact protocol,
-full source-file SHA256 records, source Git commit and a filename/byte-size data
-manifest. The manifest is not a hash of image/mask contents. Runtime-file changes
-between stages cause failure rather than producing a completed comparison.
+## Data and preprocessing
 
-The runner launches the existing training CLI, verifies all 20 history epochs
-and full sample counts, checks checkpoint consistency, then evaluates the best
-checkpoint on the complete validation split three times. It checks that the
-checkpoint hash and pooled confusion counts remain consistent between passes.
-Output layout is:
+Data were provided by the HiPMRI Study through the COMP3710 teaching copy on UQ Rangpur at `/home/groups/comp3710/HipMRI_Study_open/keras_slices_data`. The supplied data-use agreement requests acknowledgement and an applicable dataset-related citation; see Liu et al. [3]. That publication supplies dataset context, not a verified mapping for these course label files. Raw NIfTI data and checkpoint weights remain outside Git.
 
-- `training/`: checkpoints, epoch histories, training curves and GPU profile.
-- `validation_1/`, `validation_2/`, `validation_3/`: complete numeric-label
-  evaluation exports and timing records.
-- `protocol.json`, `data_manifest.json`, `experiment_provenance.json`:
-  configuration, input manifest and stage/status records.
-- `comparison_result.json`: completed-task summary, best epoch, training GPU
-  profile, validation/patient metrics and timing medians across passes.
+| Supplied split | Slices | Patients | Patient IDs |
+|---|---:|---:|---|
+| Train | 11,460 | 31 | 4-33 and 35 |
+| Validate | 660 | 4 | 36-39 |
+| Test | 540 | 3 | 40-42 |
 
-Only a successful full task prints `Full training and validation comparison
-task: PASS`. A time limit or failed stage does not count as a completed protocol,
-even if some checkpoints survive. Automatic training resume is not implemented.
-Review Slurm accounting together with the final marker and completed summary.
-Array 704715 has since been submitted from the committed source snapshot. The observed progress and remaining checks are recorded below.
+Patient IDs are disjoint. This respects the supplied patient-level partition and avoids putting slices from the same patient into training and evaluation. Within a split, slices and repeated weeks from a patient remain correlated; they are not independent subjects. Validation patient 39 contributes 480/660 slices, motivating reporting both pooled confusion counts and equal-patient means. The initial split audit inspected filenames; completed training and validation subsequently loaded their full splits. Test execution is tracked separately.
 
-`comparison_train.sbatch` uses array task 0 for the baseline and task 1 for the
-Improved model. The array requests identical initial resources; each task has
-its own output and `comparison-train-ARRAY_JOB_ID_TASK_ID.log`. It explicitly
-inherits the environment and requires `HIPMRI_SOURCE_COMMIT` to name the full
-40-character commit SHA used for the source snapshot. Array IDs/log placeholders
-follow [Slurm's job-array documentation](https://slurm.schedmd.com/job_array.html).
-Logs are ignored by Git and weights/data remain outside the source repository.
+`dataset.py` sorts `case_*.nii.gz` filenames and pairs each with the corresponding `seg_*.nii.gz`. It rejects missing pairs, non-2D or mismatched grids, non-finite MRI values, and masks that are non-finite, fractional or outside 0-5. Images have shape `[1,H,W]`; hard masks have shape `[H,W]`. Training optionally returns six-channel one-hot targets `[6,H,W]` with exact recovery of the hard mask.
 
-Before submission, commit the protocol/code, export this project tree from that
-exact Git revision using `git archive`, and extract it into a fresh snapshot
-directory on Rangpur. Run the array from that directory with the matching
-`HIPMRI_SOURCE_COMMIT`. Later development continues in the normal checkout or
-scratch directory, preserving the queued/running source snapshot. `--dry-run`
-prints planned commands without reading data, launching children or creating
-outputs; it still checks that all required runtime files exist.
+The frozen experiment uses per-slice z-score normalization over all image pixels with float64 summary statistics and a finite guard for constant images. This handles slice intensity scale without fitting statistics to validation or test cohorts. It may discard absolute intensity information; this choice was shared by both architectures and was not ablated. Training applies a paired last-axis flip with probability 0.5; validation and test use no augmentation. Image and mask receive the same transform.
+
+Native dimensions are preserved. Training includes 11,400 slices at 256x128 and 60 at 256x144. `NativeShapeBatchSampler` groups equal shapes and retains incomplete batches, so every slice and pixel contributes without resizing or dropping samples. Prediction NIfTI exports copy the reference affine/header; qualitative analysis additionally checks selected image/mask affine agreement. Native array orientation is not assigned an anatomical plane, base or apex. Two sampled NIfTI headers had empty descriptive metadata; that limited audit did not resolve anatomy.
+
+## Models, objective and metrics
+
+The baseline adapts U-Net's encoder-decoder and skip-connection design [1]. Four downsampling levels use two-convolution/ReLU blocks and max pooling; bilinear upsampling restores resolution and combines matching encoder features. `UNet2D` returns raw six-class logits on the input grid.
+
+`ImprovedUNet2D` adapts residual context blocks and multi-scale outputs from Isensee et al. [2] to 2D. Widths are b, 2b, 4b, 8b and 16b. Context blocks use affine InstanceNorm, LeakyReLU (0.01), two pre-activation 3x3 convolutions, an identity residual connection and Dropout2d (0.3). Stride-2 convolutions downsample. Decoder stages resize to the exact skip grid with nearest interpolation, reduce channels, concatenate skip features and apply localization convolutions. Quarter-, half- and full-resolution segmentation heads are aligned and summed as raw logits before the shared loss. They do not have separate auxiliary losses.
+
+At b=16 the baseline has 1,962,422 parameters and Improved has 3,187,746. The Improved model requires each input dimension to be at least 32 for its deepest normalization layer; exact skip-size interpolation handles odd dimensions. Model components in `modules.py` depend on PyTorch, without NumPy. This implementation changes dimensionality, preprocessing, loss, augmentation and training schedule from the original 3D brain-MRI system; it is an adaptation, not an exact reproduction or a feature-by-feature ablation.
+
+For six one-hot target channels, the objective is mean pixel cross-entropy plus one minus mean soft Dice. For channel c, soft Dice is `(2*sum(p_c*y_c)+1e-5)/(sum(p_c)+sum(y_c)+1e-5)`, summed over batch and spatial dimensions. All six channels, including ID 0, receive equal weight. No class weighting, anatomical selection or test-derived threshold is used.
+
+Reporting uses hard argmax predictions and confusion matrices with ground truth on rows and predictions on columns. For each ID, `Dice=2TP/(2TP+FP+FN)` and `IoU=TP/(TP+FP+FN)`. Counts are summed before pooled overlap is calculated. When both reference and prediction are absent, overlap is undefined and exported as JSON null / an empty CSV cell. Equal-patient means are explicitly separate from pooled metrics. A lower soft training objective need not improve every hard-label score.
+
+## Frozen experiment and validation results
+
+Training source was fixed at `bc8a6a4688f50770f71de24a56dff8aad43204c7`, protocol `hipmri-2d-comparison-v1`. Both models used 20 full epochs, batch size 2, base width 16, Adam at constant learning rate 0.001, seed 3710, identical preprocessing, paired flips and loss. The minimum full-validation-loss checkpoint was selected, with the earliest epoch retained on ties. A fixed seed records the experiment; bitwise deterministic CUDA training is not claimed.
+
+The detailed measurements below are the reviewed validation report. They are included directly so the README PDF contains the quantitative tables, figures and limitations as well as links to machine-readable records.
+
+## Detailed validation measurements
+
+Reviewed on 27 October 2026. Both models completed the frozen 20-epoch protocol and three full validation passes. Results are mixed: five numeric-label pooled Dice scores increased, but label 3 declined; the six-label mean is slightly lower for the Improved model. The Improved model also used more allocator memory and had a longer model-forward time. This experiment does not establish overall superiority or prostate-specific test accuracy.
+
+### Protocol and evidence
+
+- Protocol: `hipmri-2d-comparison-v1`; source commit `bc8a6a4688f50770f71de24a56dff8aad43204c7`.
+- Reporting implementation: commit `6b63092`. Exported source/manifest/checkpoint hashes and reviewed result summaries are in [summary.json](results/comparison_v1_704715/summary.json).
+- Models: UNet2D (1,962,422 parameters) and ImprovedUNet2D (3,187,746 parameters), base width 16, six output IDs. This compares whole architectures, not isolated feature ablations.
+- Both use 20 epochs, batch size 2, Adam learning rate 0.001, seed 3710, the same paired flips, per-slice all-pixel z-score normalization, Dice plus cross-entropy, and native-shape batching.
+- Each epoch covers 11,460 training slices / 31 patients and 660 validation slices / 4 patients. Patient separation passed. Evaluation covers 11 patient/week cases. Test images are not accessed by this comparison.
+- Each model selects the minimum full-validation loss checkpoint (earliest tie). Selection epochs were baseline 9 and Improved 20; no checkpoint was selected by an individual label score.
+- Both array tasks completed with Slurm exit code 0:0 and final task PASS markers. Baseline task 704715_0: a100-8, 49:05 elapsed. Improved task 704715_1: a100-1, 1:02:42 elapsed.
+- The Improved task initially waited with `QOSMaxJobsPerUserLimit`; it started after the baseline finished.
+- Saved-record audits passed for both downloaded runs. The local recomputation matched all downloaded comparison fields except relocated input paths; all four CSVs matched their JSON values. Three report figures were visually reviewed.
+
+### Pooled numeric-label overlap
+
+Each Dice/IoU value below is recomputed from the confusion matrix summed over all 660 validation slices. Changes are Improved minus baseline in percentage points (pp). Numeric IDs remain unassigned to anatomy.
+
+| ID | Baseline Dice | Improved Dice | Dice change (pp) | Baseline IoU | Improved IoU | IoU change (pp) |
+|---|---:|---:|---:|---:|---:|---:|
+| 0 | 0.993030 | 0.994407 | +0.138 | 0.986156 | 0.988876 | +0.272 |
+| 1 | 0.980363 | 0.981791 | +0.143 | 0.961482 | 0.964233 | +0.275 |
+| 2 | 0.924195 | 0.934221 | +1.003 | 0.859073 | 0.876562 | +1.749 |
+| 3 | 0.897304 | 0.861016 | -3.629 | 0.813737 | 0.755951 | -5.779 |
+| 4 | 0.875168 | 0.880611 | +0.544 | 0.778044 | 0.786688 | +0.864 |
+| 5 | 0.804001 | 0.819091 | +1.509 | 0.672242 | 0.693610 | +2.137 |
+
+The unweighted mean of these six pooled-label Dice values is **0.912343 baseline versus 0.911856 Improved**. This descriptive mean includes every numeric ID; it is not a tutor-confirmed primary prostate metric. Label 3 loses 3.629 pp while label 5 gains 1.509 pp and label 2 gains 1.003 pp.
+
+![Numeric-label validation overlap](results/comparison_v1_704715/validation_metrics_comparison.png)
+
+Full precision: [per-class CSV](results/comparison_v1_704715/per_class_comparison.csv).
+
+### Patient differences
+
+Patient 39 contributes 480/660 slices (72.73%); each other patient contributes 60. The following table first computes a Dice value per patient and then averages the four patient values equally. It complements the pooled values above rather than replacing them.
+
+| ID | Baseline patient-mean Dice | Improved patient-mean Dice | Change (pp) |
+|---|---:|---:|---:|
+| 0 | 0.993050 | 0.994321 | +0.127 |
+| 1 | 0.972599 | 0.972500 | -0.010 |
+| 2 | 0.922124 | 0.928116 | +0.599 |
+| 3 | 0.901070 | 0.855549 | -4.552 |
+| 4 | 0.866387 | 0.863876 | -0.251 |
+| 5 | 0.765095 | 0.792361 | +2.727 |
+
+- Patient 38, label 3: Dice **0.795200 -> 0.611632** (-18.357 pp). This is the largest patient/label decline and needs image-level error analysis.
+- Patient 37, label 4: **0.856800 -> 0.786273** (-7.053 pp), despite the small pooled label-4 improvement.
+- Patient 36, label 5: **0.772585 -> 0.894256** (+12.167 pp). The pooled label-5 gain is not an improvement for every patient; patients 38 and 39 slightly decline.
+- These observations informed four actual failure examples and one improvement example, now documented with MRI, ground truth, predictions and TP/FP/FN overlays in [ERROR_ANALYSIS.md](ERROR_ANALYSIS.md). Anatomical mapping remains unverified.
+
+All patient/label values: [patient metrics CSV](results/comparison_v1_704715/patient_metrics_comparison.csv).
+
+### Loss histories and checkpoint choice
+
+| Measurement | Baseline | Improved |
+|---|---:|---:|
+| Selected epoch | 9 | 20 |
+| Minimum validation CE + soft-Dice loss | 0.394608332 | 0.242225716 |
+| Final epoch validation loss | 0.445130924 | 0.242225716 |
+
+The baseline improves early and then its validation loss fluctuates. The Improved loss decreases sharply around epochs 7-8 and reaches its minimum at the final budgeted epoch; convergence beyond this fixed budget is not established. The objective uses cross-entropy and soft Dice, while the reported overlap uses hard argmax predictions. A lower objective therefore does not guarantee higher hard Dice for every label or patient.
+
+![Training and validation loss](results/comparison_v1_704715/training_loss_comparison.png)
+
+### Runtime and memory
+
+| Measurement | Baseline | Improved | Improved / baseline |
+|---|---:|---:|---:|
+| Peak allocated training GiB | 0.119952 | 0.301517 | 2.514x |
+| Peak reserved training GiB | 0.167969 | 0.353516 | 2.105x |
+| Training wall seconds including I/O and plots | 2904.286 | 3718.456 | 1.280x |
+| Median of three model-forward pass medians, ms/slice | 2.134302 | 5.968241 | 2.796x |
+
+Both nodes reported NVIDIA A100-PCIE-40GB, PyTorch 2.14.0+cu130 / CUDA build 13.0. Hardware nodes differ, and timing is observational rather than a controlled same-device benchmark. Each validation pass processes all 660 slices at batch size 1 after three shape-specific warmups, with CUDA synchronization around the model forward. Data loading, preprocessing, host-to-device transfer and metric computation are outside that forward timer.
+
+- Baseline forward medians: 2.150752, 2.134302, 2.117505 ms.
+- Improved forward medians: 5.886407, 5.979868, 5.968241 ms.
+- These repeat measurements reuse the same weights; they are not three independent training seeds or confidence intervals.
+- Both measured model-forward summaries are below the proposed 100 ms limit for this validation input shape. This does not establish complete application or held-out latency.
+- Allocated/reserved peaks describe PyTorch training tensors and its allocator. They do not verify the proposed whole-device 12 GiB VRAM bound.
+- Per-case times include loading, preprocessing, transfers, inference and metrics, excluding warmups and exports. Across 11 cases x 3 passes, median case processing time is 0.358803 s baseline and 0.577163 s Improved; each case contains 60 slices. These are not model-only per-slice times.
+
+![Allocator memory and model-forward timing](results/comparison_v1_704715/resource_comparison.png)
+
+Full precision: [model summary](results/comparison_v1_704715/model_summary.csv) and [case times](results/comparison_v1_704715/case_times.csv).
+
+### Reproduction and remaining work
+
+Run from the project checkout with the original completed experiment directories available:
 
 ```bash
-python -m unittest -v test_comparison
-bash -n comparison_train.sbatch
-```
-
-All eight orchestration tests passed locally and on Rangpur. They cover matched
-full-split plans for both models, rejecting invalid scope/budgets, dry-run
-isolation, mocked complete execution and provenance, changed source, incomplete
-sample counts, existing output preservation and preflight data errors. Training
-and evaluation child processes are stubbed in these tests; the earlier real-MRI
-smoke checks establish the underlying CLI execution separately. Bash syntax
-validation also passed.
-
-Observed scheduler records on 27 October 2026 showed partition `comp3710` UP,
-`MaxTime=UNLIMITED`, default time 03:00:00, and partition QoS `comp3710` MaxWall
-12:00:00. The user's account-association output had no explicit MaxWall value.
-The script explicitly requests 04:00:00, below the observed partition QoS limit.
-The scheduler accepted array 704715. Both tasks have since completed all 20
-epochs and three full validation passes within the four-hour per-task limit.
-The Improved task initially waited with QOSMaxJobsPerUserLimit and started
-after the baseline completed. See VALIDATION_RESULTS.md for measured results.
-
-### Completed-run validation comparison reporting
-
-`compare_results.py` audits two completed experiment directories: source commit
-and hashes, identical protocol and data manifests, full epoch/sample counts,
-best-validation-loss selection, checkpoint identity, repeated validation and
-CUDA timing settings. It recomputes numeric-label metrics from confusion counts
-and rejects incomplete, partial or mismatched runs before creating a report.
-It does not train models, modify their snapshots or inspect the test split.
-
-All eight reporting tests passed on Rangpur on 27 October 2026 (1.691 seconds),
-including the three-PNG rendering test with Matplotlib. The tests use synthetic
-completed-run records, not measured formal-training results. They cover
-hand-calculated differences, undefined metrics, CSV/JSON scope and null handling,
-provenance/data/metric inconsistencies, incomplete runs, timing mismatches,
-existing-output preservation and figure generation. Passing the PNG test does
-not constitute visual review of real result figures.
-
-Formal array 704715 used immutable source commit
-`bc8a6a4688f50770f71de24a56dff8aad43204c7`, under
-`$HOME/hipmri_comparisons/bc8a6a4688f50770f71de24a56dff8aad43204c7`.
-Task 0 (UNet2D) and task 1 (ImprovedUNet2D) both completed 20 epochs,
-three full validation passes and final task/record checks. Their selected
-epochs are 9 and 20 respectively. The actual comparison export passed and
-the downloaded results were audited; all figures and measurements are in
-VALIDATION_RESULTS.md. To reproduce, retain successful Slurm exit codes, final
-PASS markers and completed result/provenance files. Then run from the normal
-working checkout or scratch directory, using a new report directory:
-
-```bash
-python -m unittest -v test_compare_results
 python compare_results.py \
   --baseline-run "$HOME/hipmri_runs/comparison_v1_704715_0_UNet2D" \
   --improved-run "$HOME/hipmri_runs/comparison_v1_704715_1_ImprovedUNet2D" \
   --output-dir "$HOME/hipmri_runs/comparison_report_704715_reproduced"
 ```
 
-A successful export prints `Validation comparison export: PASS` and produces:
+Use a new output directory. The original committed runtime snapshot and protocol must be preserved. The committed summaries/CSVs/PNGs contain derived validation records; MRI data and checkpoint weights remain outside Git.
 
-- `comparison.json` and `comparison.md`: scope, source commit, comparison and
-  limitations; JSON also records the reporter SHA256.
-- `per_class_comparison.csv`: six numeric IDs, Dice/IoU scores and changes.
-- `patient_metrics_comparison.csv`: numeric-label metrics grouped by patient.
-- `model_summary.csv`: selected epoch/loss, training allocator peaks, training
-  wall time and repeated validation model-forward timing summaries.
-- `case_times.csv`: case processing times for each model and validation pass.
-- `training_loss_comparison.png`, `validation_metrics_comparison.png` and
-  `resource_comparison.png`: loss curves, numeric-label overlap and resource
-  observations. `--skip-plots` omits these three figures.
+The test set remains untouched by the comparison runner. Sourced label anatomy and tutor feasibility check-off are still outstanding. The fixed-model local held-out results are reported in the separate test section below. Four actual validation failures and one improvement example have since been rendered and reviewed; see [ERROR_ANALYSIS.md](ERROR_ANALYSIS.md) for the declared selection rules, evidence and limitations. Four validation patients and one training seed limit generalization claims; no statistical or clinical superiority is established. Source and filename/size hashes support record consistency but do not prove byte-identical data contents. The initial validation bundles excluded weights, so their local audit checked saved records rather than re-running validation. Both original checkpoints were later downloaded, verified and reloaded for the separate local held-out test.
 
-Labels remain 0-5 because their anatomical mapping is unconfirmed. Undefined
-metrics stay JSON null / CSV empty / explicitly undefined in Markdown and plots.
-All scores are validation-only. Three timing passes reuse the same weights and
-are not independent training replications. Allocator peaks are not whole-device
-memory use; training wall time includes I/O/plotting and is separate from model
-forward latency. Node differences and the single training seed limit performance
-comparisons. Real comparison export, record/CSV consistency checks and visual review of
-the three report figures passed; see VALIDATION_RESULTS.md. No
-prostate-specific or held-out result is claimed. Tutor check-off remains pending.
+AI assistance covered report-code scaffolding, command suggestions, numerical consistency checks, plot review and drafting this analysis. The student executed the commands and shared the outputs and files; the student remains responsible for reviewing, understanding and explaining the submitted work.
 
-### Frozen fixed-model held-out evaluation
+## Real validation error analysis
 
-`heldout_protocol.json` and [HELDOUT_PROTOCOL.md](HELDOUT_PROTOCOL.md) fix the
-next evaluation before reading the supplied test split. Both validation-selected
-checkpoints are identified by epoch and SHA256: baseline epoch 9 and Improved
-epoch 20, from runtime commit bc8a6a4688f50770f71de24a56dff8aad43204c7.
-The plan covers all 540 slices / patients 40-42, all numeric IDs 0-5, pooled and
-patient-level metrics, and three full passes per model. One A100 allocation runs
-baseline then Improved in each pass, using the frozen evaluator at batch size 1.
-Models and hyperparameters remain fixed; anatomical mapping is still unverified.
+Reviewed on 27 October 2026. Five real validation slices show four failure examples and one improvement example. All labels remain numeric because their anatomical mapping is unconfirmed. These are deliberately selected diagnostic examples, not a representative sample or held-out test evaluation. Overall scores remain in [VALIDATION_RESULTS.md](VALIDATION_RESULTS.md).
 
-All nine `test_heldout` tests passed on Rangpur CPU on 27 October 2026 (4.002 s),
-including both synthetic figure exports. `bash -n heldout_evaluate.sbatch` passed.
-The tests use temporary synthetic records and mock evaluation child processes;
-they do not establish actual test-set accuracy. The formal held-out job has not
-yet been submitted at this checkpoint. Commit/export the exact runner snapshot
-before submission, as described in HELDOUT_PROTOCOL.md. A full successful job
-prints `Frozen-model full held-out test comparison: PASS` and saves completed
-provenance, raw evaluation records, scope-labelled CSVs, a JSON summary and two
-figures for later audit. Held-out logs are ignored by Git.
+### Method and provenance
+
+- Source runtime: frozen commit `bc8a6a4688f50770f71de24a56dff8aad43204c7`; selected checkpoints: baseline epoch 9 and Improved epoch 20, unchanged from the formal comparison.
+- `failure_analysis.py` audits both completed runs, verifies matching protocol/source/data records and uses the frozen runtime files. It verifies checkpoint SHA256 before and after inference, selected image/mask affine agreement, recorded filename/size consistency, and selected input SHA256 stability.
+- Five CPU re-inferences preserve the native 256x128 grids and saved all-pixel z-score preprocessing. MRI 1st-99th percentile clipping is only a display window; it does not modify the model inputs. Each full MRI has a yellow box showing the common detail-view crop, defined by the union of ground truth and both selected-label predictions plus eight pixels of margin, clipped to the grid.
+- Upper prediction panels use the six-ID color bar. Lower overlays use green=TP, red=FP and blue=FN for the selected ID; the ground-truth detail view uses yellow. These two palettes serve different purposes. Display orientation is native array orientation, without an anatomical plane or base/apex assignment.
+- All eight tests passed on Rangpur CPU (5.664 s), including five synthetic PNG exports and hand-checked inference counts. The real five-slice run then printed `Exploratory validation overlays: PASS`. The downloaded manifest reports completed, and source/PNG/checkpoint checksums passed local checks. All five figures were visually inspected.
+- Figure counts/Dice/IoU use fresh CPU inference. Selected-label metrics match the CUDA reference in all five examples. Full six-label confusion-matrix difference flags occur for baseline example 3 and Improved examples 4 and 5; these flags are preserved in the manifest. This analysis is not a timing benchmark.
+- Full selection rules, dataset indices, filenames, reference and rendered counts, crop bounds, hashes and difference flags are in [analysis_manifest.json](results/failure_analysis_704715/analysis_manifest.json).
+
+### Declared selection rules
+
+The rules were chosen post hoc to investigate patient/label findings in the validation comparison. Each search is within the named patient, uses validation pass 1, and breaks ties by the lowest dataset index. The minimum target size prevents selecting a completely absent target; it is not a clinically meaningful size threshold.
+
+| Example | Patient / ID | Rule | Minimum GT pixels | Eligible slices |
+|---|---|---|---:|---:|
+| 1 | 38 / 3 | Largest baseline-minus-Improved Dice; GT >=64 pixels | 64 | 54 |
+| 2 | 37 / 4 | Largest Improved-minus-baseline FP count; GT >=32 pixels | 32 | 15 |
+| 3 | 38 / 5 | Lowest Improved Dice; GT >=16 pixels | 16 | 20 |
+| 4 | 39 / 5 | Lowest Improved Dice; GT >=32 pixels | 32 | 154 |
+| 5 | 36 / 5 | Largest Improved-minus-baseline Dice; GT >=32 pixels; improvement example | 32 | 28 |
+
+### Displayed-label measurements
+
+| Example | Ground-truth pixels | Baseline TP / FP / FN | Improved TP / FP / FN | Baseline Dice | Improved Dice |
+|---|---:|---|---|---:|---:|
+| 1 | 4661 | 2554 / 80 / 2107 | 660 / 55 / 4001 | 0.700206 | 0.245536 |
+| 2 | 78 | 76 / 59 / 2 | 78 / 408 / 0 | 0.713615 | 0.276596 |
+| 3 | 35 | 0 / 0 / 35 | 0 / 0 / 35 | 0.000000 | 0.000000 |
+| 4 | 79 | 79 / 251 / 0 | 79 / 480 / 0 | 0.386308 | 0.247649 |
+| 5 | 152 | 55 / 81 / 97 | 115 / 68 / 37 | 0.381944 | 0.686567 |
+
+### 1. Broad missed region: patient 38, ID 3
+
+File `case_038_week_0_slice_0.nii.gz`; dataset index 120; week 0; slice ID 0.
+
+The ground-truth detail view contains a large connected ID-3 region. Both models miss part of it, but the Improved prediction covers a substantially smaller portion. Its blue FN overlay covers most of the target, with only a relatively small green TP patch. FN rises from 2,107 to 4,001 pixels while FP decreases only from 80 to 55; Dice falls from 0.700206 to 0.245536. This is a broad regional omission, beyond a small contour offset. It illustrates the patient-38 ID-3 decline in the aggregate results, without establishing its anatomical cause.
+
+Human review should check target completeness, including large omitted regions, before accepting a contour. A future experiment could examine adjacent slices and multi-scale head behavior on validation data; this example alone does not prove that residual blocks or a specific head caused the failure.
+
+![1. Broad missed region: patient 38, ID 3](results/failure_analysis_704715/01_patient038_label3.png)
+
+### 2. Region expansion: patient 37, ID 4
+
+File `case_037_week_0_slice_46.nii.gz`; dataset index 101; week 0; slice ID 46.
+
+The yellow ground truth contains 78 pixels. The Improved model covers all 78 but also predicts a large contiguous surrounding region: FP increases from 59 to 408, and predicted ID-4 area expands from 135 to 486 pixels. The red FP overlay makes this expansion visible. Reducing FN from 2 to 0 does not compensate for the added false positives: Dice falls from 0.713615 to 0.276596.
+
+Human review must check outward spread as well as missed area. Potential future checks include confusion with neighboring numeric IDs and validation-only changes to sampling/loss design; any such change requires a fresh protocol and cannot be credited to this completed comparison.
+
+![2. Region expansion: patient 37, ID 4](results/failure_analysis_704715/02_patient037_label4.png)
+
+### 3. Complete small-region miss: patient 38, ID 5
+
+File `case_038_week_0_slice_25.nii.gz`; dataset index 138; week 0; slice ID 25.
+
+Both models produce no ID-5 pixels despite a 35-pixel ground-truth patch. Both have TP=0, FP=0, FN=35 and Dice=0. The blue overlay covers the entire yellow target region. Native-pixel enlargement makes this failure visible; no synthetic boundary smoothing or image resampling was used.
+
+A high pooled score does not ensure recovery of every small visible region. Review should explicitly inspect small connected regions. Whether missing 3D context, low contrast or class imbalance contributes remains a hypothesis, not a conclusion from this image.
+
+![3. Complete small-region miss: patient 38, ID 5](results/failure_analysis_704715/03_patient038_label5.png)
+
+### 4. Excess predicted area despite complete coverage: patient 39, ID 5
+
+File `case_039_week_5_slice_40.nii.gz`; dataset index 515; week 5; slice ID 40.
+
+Both models cover all 79 target pixels (FN=0), but each extends beyond the ground truth. The Improved prediction has a larger elongated red FP region: FP rises from 251 to 480 and predicted area from 330 to 559 pixels. Dice drops from 0.386308 to 0.247649. Complete target coverage therefore coexists with a poor overlap score.
+
+Review must compare the predicted extent with the reference boundary rather than checking coverage alone. A single postprocessing rule that trims all predictions could reduce FP here while worsening the omissions in examples 1 and 3; that tradeoff requires validation rather than an automatic global fix.
+
+![4. Excess predicted area despite complete coverage: patient 39, ID 5](results/failure_analysis_704715/04_patient039_label5.png)
+
+### 5. Improvement with remaining errors: patient 36, ID 5
+
+File `case_036_week_0_slice_18.nii.gz`; dataset index 10; week 0; slice ID 18.
+
+The Improved prediction covers more of the 152-pixel ground truth: TP increases from 55 to 115, FN falls from 97 to 37, and FP decreases from 81 to 68. Dice increases from 0.381944 to 0.686567. The green overlay expands into part of the region missed by the baseline, although residual red and blue regions remain.
+
+This deliberately selected improvement example provides context for the pooled ID-5 gain. It does not establish consistent improvement across patients or remove the need to review the remaining boundary discrepancies.
+
+![5. Improvement with remaining errors: patient 36, ID 5](results/failure_analysis_704715/05_patient036_label5.png)
+
+### Engineering interpretation and limits
+
+The engineering dilemma is whether the extra model complexity and resource cost produces contours that need less human correction. This validation run presents mixed evidence: larger omissions and expansions in some cases, a complete small-region miss in both models, and an improvement in another case. The model name, lower validation loss or high aggregate scores cannot replace image-level review. Anatomy is unverified, so these images cannot rank clinical severity or establish prostate base/apex accuracy.
+
+The five examples are selected extremes, include correlated slices from four validation patients, and reuse one training seed. They cannot estimate error prevalence, confidence intervals or held-out generalization. Explanations such as low contrast, class imbalance or missing 3D context remain candidate explanations requiring further evidence. The local held-out evaluation is now reported separately; sourced anatomical mapping remains outstanding; the tutor feasibility check-off is still pending.
+
+### Reproduce
+
+```bash
+python -m unittest -v test_failure_analysis
+python failure_analysis.py \
+  --baseline-run "$HOME/hipmri_runs/comparison_v1_704715_0_UNet2D" \
+  --improved-run "$HOME/hipmri_runs/comparison_v1_704715_1_ImprovedUNet2D" \
+  --output-dir "$HOME/hipmri_runs/failure_analysis_704715_reproduced" \
+  --device cpu
+```
+
+Use a new output directory and retain the frozen runtime snapshot, original checkpoints and supplied validation data. Outputs are five derived PNG figures and a JSON manifest; raw MRI/NIfTI data and checkpoint weights remain outside Git.
+
+AI assistance covered deterministic example-selection and rendering code, test scaffolding, consistency checks, visual review and drafting this analysis. The student executed the commands and shared the results/files. The student remains responsible for checking and explaining the implementation, observations and limitations.
+
+## Fixed-model held-out evaluation
+
+Both validation-selected models completed three full test passes on all 540 supplied test slices, using the same fixed weights and original evaluator source. The local run printed `Local fixed-model full held-out test comparison: PASS`; completed provenance, grouped metrics, input/source/weight consistency, repeated predictions and every CSV cell passed the saved-record audit. Both figures were visually checked.
+
+### Scope and provenance
+
+- Test cohort: patients 40, 41 and 42; 540 slices, nine patient/week cases, all native 256x128. Patient 40 contributes 420 slices (77.78%); patients 41 and 42 contribute 60 each.
+- Model source: `bc8a6a4688f50770f71de24a56dff8aad43204c7`; selected epochs baseline 9 / Improved 20, unchanged after validation. The checkpoint SHA256 values match the predeclared held-out protocol.
+- Execution: Windows 11, Python 3.12.14, PyTorch 2.14.0+cu130 / CUDA build 13.0, RTX 4070 Laptop GPU (8188 MiB, driver 617.42). Local protocol `hipmri-heldout-numeric-local-v1` preserves the original full test procedure while documenting the user-requested hardware/path change.
+- The original A100 held-out runner was committed as `bc601d92de5fb3da982b43d96de34afcd544a94c`. The local orchestration is identified by its exact source SHA256, not a fabricated Git commit. Actual execution logs/records remain in the local evidence directory.
+- The downloaded accounting records show remote job 705243 already COMPLETED / 0:0 before the attempted cancellation. Its result files were not collected or reviewed. All numerical results here come from the separately executed local GPU run.
+- All 1,080 local test image/mask files were content-hashed and rechecked around the evaluation stages. The transferred archive SHA256 matched the value printed on Rangpur. Patient separation from both training and validation passed.
+- Numeric labels 0-5 remain unassigned to anatomy. The prostate-specific acceptance criterion and compulsory tutor feasibility check-off remain unresolved.
+
+### Pooled overlap
+
+Confusion counts are summed over the full cohort before overlap is computed. Changes are Improved minus baseline in percentage points (pp).
+
+| ID | Baseline Dice | Improved Dice | Dice change (pp) | Baseline IoU | Improved IoU |
+|---|---:|---:|---:|---:|---:|
+| 0 | 0.995656 | 0.995920 | +0.026 | 0.991349 | 0.991873 |
+| 1 | 0.982035 | 0.984254 | +0.222 | 0.964704 | 0.968997 |
+| 2 | 0.925427 | 0.938640 | +1.321 | 0.861204 | 0.884376 |
+| 3 | 0.962184 | 0.956143 | -0.604 | 0.927123 | 0.915971 |
+| 4 | 0.838244 | 0.827911 | -1.033 | 0.721531 | 0.706355 |
+| 5 | 0.803655 | 0.843050 | +3.939 | 0.671759 | 0.728683 |
+
+The descriptive mean over all six pooled-label Dice values is **0.917867 baseline versus 0.924320 Improved** (+0.645 pp). IDs 0, 1, 2 and 5 improve; IDs 3 and 4 decline. This all-ID mean does not designate a primary anatomical target or establish statistical/clinical superiority.
+
+![Full-test pooled overlap](results/test_local_705243/heldout_metrics_comparison.png)
+
+### Patient differences and aggregation
+
+Each patient receives equal weight in the following per-label mean; all three patients have defined values. The cohort has only three independent patient IDs.
+
+| ID | Baseline equal-patient Dice | Improved equal-patient Dice | Change (pp) |
+|---|---:|---:|---:|
+| 0 | 0.994015 | 0.995461 | +0.145 |
+| 1 | 0.980949 | 0.984218 | +0.327 |
+| 2 | 0.921972 | 0.939292 | +1.732 |
+| 3 | 0.957475 | 0.950309 | -0.717 |
+| 4 | 0.856776 | 0.868462 | +1.169 |
+| 5 | 0.804542 | 0.839268 | +3.473 |
+
+ID 3 declines for all three patients. ID 5 improves for all three, but the gain varies from about +0.250 pp for patient 41 to +6.418 pp for patient 42. For ID 4, pooled Dice falls while the equal-patient mean increases: patient 40 declines (0.829432 to 0.809963) and contributes most slices, while patients 41 and 42 improve. Pooled and patient-mean metrics answer different questions; neither should be chosen post hoc to hide a decline.
+
+![Test patient changes and local GPU timing](results/test_local_705243/heldout_patients_and_timing.png)
+
+### Local timing
+
+| Measurement | Baseline | Improved |
+|---|---:|---:|
+| Median of three model-forward pass medians, ms/slice | 1.605100 | 4.674550 |
+| Three pass medians, ms | 1.568750, 1.605100, 1.617400 | 4.674550, 4.640200, 4.947650 |
+| Median case-processing seconds (27 case/pass records per model) | 0.335762 | 0.545410 |
+
+Improved model-forward time is **2.912x** baseline on this local GPU. Batch size is 1 with three warmups per shape and CUDA synchronization. Forward time excludes loading, preprocessing, transfers, argmax and metric computation. Case processing includes loading, preprocessing, transfers, forward and metrics, while excluding warmups/exports; each case has 60 slices. The recorded evaluation/export wall time was 59.613 seconds, excluding dependency installation, transfer and initial preflight audits.
+
+Both local forward summaries are below the proposed 100 ms per-slice target in this measured scope. They do not measure a complete interactive contouring workflow. A100 validation latency is a separate experiment and must not be combined with these RTX 4070 timings as a same-device benchmark. No local whole-device training-memory bound was measured.
+
+### Interpretation and limits
+
+The fixed-model test run shows a modest all-ID mean gain with specific regressions and higher forward cost. The ID-3 decline appears in both validation and test. The results do not support an unconditional recommendation to replace the baseline. A decision about prostate contours requires independently confirmed anatomy and review of the relevant errors; the existing five qualitative examples are explicitly validation examples, not test case selection.
+
+The same weights were reused in all three passes. These are repeat timing checks, not three training seeds, confidence intervals or independent replications. Test results were not used to retrain, tune, choose thresholds or change checkpoints. A new model-development study would require a separate evaluation design.
+
+### Machine-readable evidence
+
+- [Pooled class CSV](results/test_local_705243/per_class_test.csv), [patient CSV](results/test_local_705243/patient_test_metrics.csv), [equal-patient means](results/test_local_705243/equal_patient_mean_test.csv).
+- [Model timing CSV](results/test_local_705243/model_test_summary.csv), [case timings](results/test_local_705243/case_test_times.csv), [full summary](results/test_local_705243/summary.json).
+- [Audit record](results/test_local_705243/audit.json), [execution provenance](results/test_local_705243/provenance.json), [environment](results/test_local_705243/environment.json), [protocol](results/test_local_705243/protocol.json), [original protocol](results/test_local_705243/parent_protocol.json).
+- [Test file content hashes](results/test_local_705243/test_content_sha256.json) and [exact executed local wrapper](results/test_local_705243/run_local_heldout.py.txt). The wrapper snapshot is workspace evidence with recorded paths, not a standalone project CLI; portable evaluator commands are in [REPRODUCIBILITY.md](REPRODUCIBILITY.md).
+
+AI assistance covered local environment setup, transfer instructions, guarded extraction/orchestration, actual local command execution, numerical and source/data checks, figure review, and drafting this report. The student supplied the inputs from Rangpur and remains responsible for reviewing and explaining the submitted work.
+
+## Engineering recommendation
+
+For the measured validation workload, retain the baseline as the simpler reference implementation. Added complexity did not produce a higher six-label pooled mean, and ID-3 overlap declined while memory and latency increased. Improved's gains on IDs 2 and 5 justify investigation, but do not establish a better prostate contouring system. The completed local test run increases the six-label mean from 0.917867 to 0.924320, but IDs 3 and 4 decline and Improved is 2.912x slower in model-forward timing. The same fixed checkpoints were used throughout. This remains a conditional accuracy/resource trade-off, with no confirmed prostate-specific result.
+
+Human review should inspect both omitted regions and outward contour expansion, with explicit attention to small regions. The examples demonstrate that complete reference coverage can coexist with excessive false positives and that a high pooled score can hide complete slice-level misses. Anatomy remains unverified, so clinical severity and prostate base/apex claims cannot be ranked. Adjacent-slice context, class-aware sampling or other loss designs are possible future validation studies; none is credited as an implemented improvement here. Test results must not tune those changes.
+
+## Feasibility Review
+
+**Project:** HipMRI 2D Improved U-Net | **Student:** s4986405 | **Initial review:** 26 October 2026. **Status:** written review prepared; compulsory tutor consultation/check-off remains incomplete. The following preserves the proposed scope and distinguishes subsequent evidence.
+
+**User need and dilemma.** An imaging specialist needs an offline contour draft for human correction. The proposed investigation asks whether a more complex 2D architecture reduces prostate/adjacent-organ boundary errors enough to justify added runtime and memory. Anatomical evaluation depends on confirming numeric label semantics independently.
+
+**Choice and course concepts.** The Normal option uses the supplied HipMRI 2D patient split, U-Net as baseline [1], and residual context plus multi-scale outputs adapted from Isensee et al. [2]. Convolutions, skip/residual connections, normalization and overlap objectives connect the implementation to course concepts. Two-dimensional processing limits inter-slice continuity.
+
+**Preliminary evidence.** Initial filename audits found 31/4/3 disjoint patients and 11,460/660/540 slices. One real MRI/mask pair loaded at 256x128. The untrained baseline produced finite six-channel logits; CPU shape/gradient, metric and small pipeline checks passed. This early evidence did not establish accuracy. Later full training, validation and five real diagnostic overlays are documented above; they do not constitute tutor approval.
+
+**Five proposed acceptance criteria.** (1) Preserve patient separation and native image/mask alignment. (2) Target pooled prostate test Dice >=0.75, while reporting all-class overlap and patient means; this target remains unassessable until anatomy is independently confirmed, and primary aggregation was not tutor-confirmed. (3) Compare both models on the same held-out patients and inspect 3-5 actual boundary failures with FP/FN overlays. (4) Target whole-device peak VRAM <=12 GiB and median synchronized model forward <=100 ms per 256x128 slice at batch size 1, plus per-case timing. Allocator peaks do not verify the whole-device limit; validation forward summaries meet the latency target only in their stated scope. (5) Record dependencies, seeds, configurations and validation-only checkpoint selection before test use.
+
+**Risks, budget and fallback.** Risks include small patient cohorts, imbalance, unverified anatomy/slice ordering, absent 3D context and imperfect reproducibility. The proposed budget was two one-hour GPU pilots and two training runs capped at four hours each. Both formal training tasks completed within that cap; the fixed-model test job requests 30 minutes on one GPU. The baseline remains the fallback for an unfavorable accuracy/resource trade-off. Tutor check-off and anatomical mapping still require external confirmation; no retrospective approval is claimed.
+
+## Code structure and reproducibility
+
+| File or group | Responsibility |
+|---|---|
+| `modules.py`, `model_factory.py` | Pure-PyTorch model components and architecture registry |
+| `dataset.py`, `check_splits.py`, `shape_batching.py` | Paired loading, preprocessing, split checks and native-grid batches |
+| `losses.py`, `metrics.py` | Shared differentiable objective and hard-label confusion metrics |
+| `train.py`, `training_io.py` | Full training/validation loops, exclusive run outputs, atomic checkpoint files and histories |
+| `gpu_profile.py`, `plot_history.py` | Allocator profiling and learning curves |
+| `predict.py`, `evaluate.py`, `check_checkpoint.py` | Saved-model prediction, full split evaluation and checkpoint checks |
+| `run_comparison.py`, `comparison_train.sbatch`, `comparison_protocol.json` | Frozen matched training and validation orchestration |
+| `compare_results.py`, `failure_analysis.py` | Audited comparison tables/plots and paired real error overlays |
+| `run_heldout.py`, `heldout_evaluate.sbatch`, `heldout_protocol.json` | Fixed-model full test orchestration and reporting |
+| `test_*.py` | Regression checks, including synthetic fixtures and mocked orchestration |
+
+See [REPRODUCIBILITY.md](REPRODUCIBILITY.md) for exact observed versions, representative commands, source snapshots and evidence locations. Dependencies are PyTorch, NumPy, NiBabel and Matplotlib; the existing environment reported Python 3.11.16, PyTorch runtime 2.14.0+cu130 (distribution metadata 2.14.0), CUDA build 13.0, NumPy 2.4.6, NiBabel 5.4.2 and Matplotlib 3.11.2. This is an observed working environment, not a validated clean-install lock file.
+
+Meaningful checks observed on Rangpur include model shapes/gradients and shared checkpoint reloads; hand-calculated metric cases; paired transforms, losses and native-grid batching; real CPU/GPU smoke runs; 13 evaluation/metric tests; eight matched-run orchestration tests; eight reporting tests; eight qualitative-analysis tests plus five real renders; and nine held-out orchestration tests. The latter tests use mocked evaluation children and synthetic records, so passing them does not establish real test-set results. Full training/validation execution and real-image evidence are recorded separately above. Output directories are preserved rather than silently overwritten; interrupted runs are not automatically resumed.
+
+Source and artifact hashes support consistency checks. The initial validation evidence bundles excluded weights. Both original fixed checkpoints were later downloaded, verified by SHA256 and reloaded for the complete local test evaluation; training was not independently repeated. There is one training seed, only four validation patients and three test patients, no controlled ablation, no whole-device VRAM trace and no claim of bitwise cross-device reproduction. Training/validation input records use filename/size manifests; all 1,080 local test image/mask files were additionally content-hashed and rechecked. CPU/GPU qualitative predictions had some full-matrix differences, retained in their manifest, even though the selected-label counts matched.
+
+## Artificial Intelligence Usage Disclosure
+
+OpenAI ChatGPT and Codex provided substantial assistance with model/data/training/evaluation scaffolding, regression tests, plotting and error-analysis code, frozen protocols, Slurm/Git commands, troubleshooting, literature and specification review, numerical consistency checks and report drafts. Assistance included proposing acceptance criteria and experiments, reviewing shared terminal output and downloaded artifacts, and interpreting measured trade-offs. No use of additional AI tools is asserted without confirmation.
+
+The student executed the local WSL and Rangpur commands and supplied terminal outputs and downloaded result bundles. With AI assistance, verification covered input rejection and pairing tests, patient separation, hand-calculated overlap examples, finite gradients, checkpoint save/reload checks, native-shape coverage, real CPU/GPU smoke runs, matched full-training logs, JSON/CSV numerical recomputation, source/checkpoint/artifact consistency, and visual review of three validation comparison figures and five real error overlays. Nine original held-out tests plus nine local migration checks passed in the new Windows environment. Codex executed the authorized local setup, GPU feasibility checks and real six-pass held-out evaluation; all result/CSV audits passed and both test figures were visually reviewed. The student executed the remote packaging/download commands and provided the inputs. Local execution is recorded explicitly, rather than attributing those agent-run commands to the student.
+
+These checks do not establish an independent manual audit of every line or independent replication. The student remains responsible for reviewing, understanding, correcting and explaining the code, formulas, references, results and disclosures. AI-supported debugging included correcting heterogeneous-slice batching, CSV line endings and an initially empty Git archive; earlier failed attempts are not counted as completed experiments. Current held-out measurements are from the completed local evaluation; remote held-out result files were not reviewed. Anatomical mapping and tutor check-off remain unresolved.
+
+## References
+
+[1] Ronneberger, O., Fischer, P. and Brox, T. (2015). *U-Net: Convolutional Networks for Biomedical Image Segmentation*. [Paper](https://arxiv.org/abs/1505.04597).
+
+[2] Isensee, F. et al. (2018). *Brain Tumor Segmentation and Radiomics Survival Prediction: Contribution to the BRATS 2017 Challenge*. [Paper](https://arxiv.org/abs/1802.10508). Architectural inspiration; implementation differences are stated above.
+
+[3] Liu, S., Dowling, J. A., Engstrom, C., Greer, P. B., Crozier, S. and Chandra, S. S. (2020). *Manipulating Medical Image Translation with Manifold Disentanglement*. [Paper](https://arxiv.org/abs/2011.13615). Dataset-related context, not proof of the numerical label mapping.

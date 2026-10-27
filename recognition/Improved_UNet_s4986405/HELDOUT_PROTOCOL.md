@@ -46,9 +46,10 @@ On 27 October 2026, all nine held-out-runner tests passed on Rangpur (4.002 s),
 including both synthetic plot exports; `bash -n heldout_evaluate.sbatch` also
 passed. The tests use temporary synthetic records and mock evaluation child
 processes. They verify orchestration and checks, not actual test-set accuracy.
-At this documentation checkpoint no formal held-out job has been submitted.
+The protocol was committed before submission. Downloaded accounting later showed job 705243 COMPLETED / 0:0 before an attempted cancellation; its result files were not collected. At the user's request, an explicitly recorded local execution adaptation preserved the frozen weights, model/evaluator code, complete split and repeat order. The local evaluation completed and is reviewed in [TEST_RESULTS.md](TEST_RESULTS.md).
 
-Commit the protocol and runner, export that exact project tree with `git archive`
+Historical A100 submission procedure (already performed; retain for audit):
+commit the protocol and runner, export that exact project tree with `git archive`
 and extract it into a new `$HOME/hipmri_heldout/FULL_RUNNER_SHA` directory.
 Preserve the earlier training runtime snapshot and both run directories.
 Export `HIPMRI_HELDOUT_COMMIT` as the full runner commit. From the new snapshot,
@@ -68,7 +69,7 @@ Output includes the six per-pass evaluation directories, `test_comparison.json`,
 cells/null rather than zero. Timings distinguish synchronized model-only
 forward passes from case processing including I/O and transfers. Both models
 run in the same allocation; timing variation and the small test cohort remain
-limitations. Real result audits and visual review remain to be performed.
+limitations. Real local result audits and visual review have since passed; the A100 result artifacts were not reviewed.
 
 AI assistance covered protocol drafting, runner/test/script scaffolding and
 reviewing the user-executed test results. The student remains responsible for

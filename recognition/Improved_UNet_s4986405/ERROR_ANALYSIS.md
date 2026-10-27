@@ -88,7 +88,7 @@ This deliberately selected improvement example provides context for the pooled I
 
 The engineering dilemma is whether the extra model complexity and resource cost produces contours that need less human correction. This validation run presents mixed evidence: larger omissions and expansions in some cases, a complete small-region miss in both models, and an improvement in another case. The model name, lower validation loss or high aggregate scores cannot replace image-level review. Anatomy is unverified, so these images cannot rank clinical severity or establish prostate base/apex accuracy.
 
-The five examples are selected extremes, include correlated slices from four validation patients, and reuse one training seed. They cannot estimate error prevalence, confidence intervals or held-out generalization. Explanations such as low contrast, class imbalance or missing 3D context remain candidate explanations requiring further evidence. Final held-out evaluation and sourced anatomical mapping remain outstanding; the tutor feasibility check-off is still pending.
+The five examples are selected extremes, include correlated slices from four validation patients, and reuse one training seed. They cannot estimate error prevalence, confidence intervals or held-out generalization. Explanations such as low contrast, class imbalance or missing 3D context remain candidate explanations requiring further evidence. The fixed-model local held-out evaluation has since completed (see [TEST_RESULTS.md](TEST_RESULTS.md)); sourced anatomical mapping remains outstanding; the tutor feasibility check-off is still pending.
 
 ## Reproduce
 
