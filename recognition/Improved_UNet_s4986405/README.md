@@ -60,8 +60,9 @@ Optional per-slice MRI normalization and six-channel one-hot masks are
 available. Optional paired training augmentation is also available.
 Baseline training/validation loops, checkpoint/history saving and a single-step
 CPU optimizer check are available. ImprovedUNet2D is implemented and its
-architecture tests passed on CPU. Training/prediction/checkpoint CLI integration
-for the Improved model and class weighting remain unimplemented.
+architecture tests passed on CPU. Training, prediction and checkpoint checking
+support both architectures, with CPU integration tests passed. Class weighting
+remains unimplemented.
 
 ## Runtime dependencies and inspection tools
 
@@ -256,10 +257,10 @@ An imaging specialist needs an offline prototype that drafts pelvic contours for
 
 ### Scope, model choice and course concepts
 
-Use the supplied HipMRI 2D slices and six label IDs, targeting the Normal difficulty option. Keep the implemented U-Net [1] as baseline. The implemented Improved model adapts residual context blocks and multi-scale segmentation outputs from Isensee et al. [2]. Their original network processes 3D brain MRI; the 2D adaptation and deviations are documented below. Eight CPU architecture tests passed, while CLI integration and comparative training remain pending. Convolutions, skip/residual connections and overlap-based objectives connect the design to course concepts. Both models will share preprocessing, loss, splits and a matched training budget. Optional per-slice MRI z-score normalization and six-channel one-hot targets
+Use the supplied HipMRI 2D slices and six label IDs, targeting the Normal difficulty option. Keep the implemented U-Net [1] as baseline. The implemented Improved model adapts residual context blocks and multi-scale segmentation outputs from Isensee et al. [2]. Their original network processes 3D brain MRI; the 2D adaptation and deviations are documented below. Eight CPU architecture tests and the shared-CLI CPU integration checks passed; real-data Improved-model training and comparative experiments remain pending. Convolutions, skip/residual connections and overlap-based objectives connect the design to course concepts. Both models will share preprocessing, loss, splits and a matched training budget. Optional per-slice MRI z-score normalization and six-channel one-hot targets
 are available. Paired horizontal flips and baseline training/validation loops
 are implemented, together with checkpoint and history saving. The Improved
-model class is implemented; its training/prediction CLI integration remains pending.
+model class and its training/prediction CLI integration are implemented and CPU-tested.
 
 ### Preliminary evidence already obtained
 
@@ -275,7 +276,7 @@ Filename audits found 31/4/3 patients and 11,460/660/540 slices in train/validat
 
 ### Risks, budget, next experiment and fallback
 
-Key risks are class imbalance, only three test patients, unverified anatomical label-ID mapping/slice ordering, missing 3D context and unverified full-model GPU training/resource use. Verify metadata before prostate/base/apex analysis. Proposed initial budget: two one-hour GPU pilots, then two comparison runs capped at four GPU-hours each. Next: finish check-off, validate full-model GPU training, integrate the CPU-tested Improved model into the shared CLI, and run matched experiments using the shared preprocessing. Reduce batch size/channel width if needed. If only baseline is feasible, report the Easy fallback honestly and discuss the revised scope with the tutor.
+Key risks are class imbalance, only three test patients, unverified anatomical label-ID mapping/slice ordering, missing 3D context and unverified full-model GPU training/resource use. Verify metadata before prostate/base/apex analysis. Proposed initial budget: two one-hour GPU pilots, then two comparison runs capped at four GPU-hours each. Next: finish check-off, validate full-model GPU training, check the Improved model on real MRI data and an allocated GPU, and run matched experiments using the shared preprocessing. Reduce batch size/channel width if needed. If only baseline is feasible, report the Easy fallback honestly and discuss the revised scope with the tutor.
 
 ### References
 
@@ -289,7 +290,7 @@ Requirements checked against COMP3710/COMP7710 assessment specification v2.5, Se
 
 ### Tools and assistance
 
-OpenAI ChatGPT and Codex assisted with substantial code scaffolding and documentation drafts. Assistance covered NIfTI image/mask pairing; the PyTorch Dataset and its validation checks; baseline U-Net components and assembly; Dice/IoU metrics; inspection, visualization and regression-test scripts; Git commands; Conda/Slurm troubleshooting; assessment-requirement review; literature lookup; and drafting this feasibility review and disclosure. Subsequent assistance also covered optional MRI z-score normalization, six-channel one-hot targets, paired training flips, the Dice/CE loss, training/validation loops, checkpoint and history persistence, training-curve plotting, and checkpoint-based prediction/export, and full-model GPU smoke-job/profiling code, native-shape batching, and the paper-inspired 2D Improved model architecture with their tests. The assistance included proposing experiments and acceptance criteria, which remain plans rather than measured results. This disclosure does not assert use of other AI tools that has not been confirmed.
+OpenAI ChatGPT and Codex assisted with substantial code scaffolding and documentation drafts. Assistance covered NIfTI image/mask pairing; the PyTorch Dataset and its validation checks; baseline U-Net components and assembly; Dice/IoU metrics; inspection, visualization and regression-test scripts; Git commands; Conda/Slurm troubleshooting; assessment-requirement review; literature lookup; and drafting this feasibility review and disclosure. Subsequent assistance also covered optional MRI z-score normalization, six-channel one-hot targets, paired training flips, the Dice/CE loss, training/validation loops, checkpoint and history persistence, training-curve plotting, and checkpoint-based prediction/export, and full-model GPU smoke-job/profiling code, native-shape batching, and the paper-inspired 2D Improved model architecture and the shared architecture-selection/checkpoint-loading paths with their tests. The assistance included proposing experiments and acceptance criteria, which remain plans rather than measured results. This disclosure does not assert use of other AI tools that has not been confirmed.
 
 ### Verification performed so far
 
@@ -314,10 +315,11 @@ The student ran the suggested commands in the local WSL repository and on Rangpu
 - Running three memory-report unit tests plus three training-loop tests successfully on CPU and checking the Slurm script syntax. GPU smoke job 704367 later raised a heterogeneous-slice batching error in epoch 2.
 - Running six native-shape batching tests plus three training-loop tests successfully on Rangpur CPU, then submitting replacement GPU smoke job 704509; it was observed pending with reason Priority.
 - Running all eight Improved-model architecture tests successfully on Rangpur CPU, including shared-loss backward/optimizer checks and baseline compatibility; the default Improved model reported 3,187,746 parameters.
+- Running all 20 shared-model-selection, prediction, training-loop and checkpoint tests successfully on Rangpur CPU, including synthetic training/save/reload/prediction for both architectures and old baseline checkpoint compatibility.
 
 ### Current limits and responsibility
 
-Baseline training has only undergone limited smoke runs; a final trained model has not been evaluated. The Improved model class passed eight CPU architecture tests but is not yet integrated into the training/evaluation CLI or validated in a comparison run. The target prostate Dice, GPU memory, inference latency and proposed resource budgets have not been demonstrated. The Slurm CUDA convolution diagnostic completed successfully on an allocated A100 node; full-model GPU training and profiling remain unverified. The anatomical meaning of label IDs must be checked against dataset metadata before prostate-specific reporting. The full dataset contents have not been exhaustively scanned.
+Baseline training has only undergone limited smoke runs; a final trained model has not been evaluated. The Improved model class and shared training/prediction CLI passed CPU tests on synthetic fixtures; real-data Improved-model training, GPU profiling and comparative evaluation remain unverified. The target prostate Dice, GPU memory, inference latency and proposed resource budgets have not been demonstrated. The Slurm CUDA convolution diagnostic completed successfully on an allocated A100 node; full-model GPU training and profiling remain unverified. The anatomical meaning of label IDs must be checked against dataset metadata before prostate-specific reporting. The full dataset contents have not been exhaustively scanned.
 
 The student remains responsible for reviewing, understanding, correcting and explaining the submitted code, references, experimental design and report. The checks above document observed execution and do not establish that every line has received an independent manual audit. This disclosure must be updated as implementation, verification and actual AI use change. The tutor feasibility check-off remains incomplete.
 
@@ -871,9 +873,65 @@ heads; finite shared-loss gradients and an optimizer update; deterministic eval
 without dropout RNG consumption; invalid input/configuration rejection; and
 strict state reloading/output equivalence of the existing baseline.
 
-At this checkpoint `train.py`, `predict.py` and `check_checkpoint.py` still select
-only the baseline. The Improved model has not undergone a real-data training run,
-GPU memory profile or held-out evaluation. Its architecture tests were executed
+`train.py`, `predict.py` and `check_checkpoint.py` now support both architectures
+through the shared factory described below. CPU integration tests use synthetic
+data; the Improved model has not undergone a real-data training run, GPU memory
+profile or held-out evaluation. Its architecture tests were executed
 in a separate scratch directory from baseline GPU job 704509, which was still
 PENDING with no assigned node when last checked. Label anatomy and the tutor
 check-off remain unresolved.
+
+### Shared model selection and checkpoint consumers
+
+`model_factory.py` constructs the explicit supported architectures `UNet2D`
+and `ImprovedUNet2D`. Training defaults to `UNet2D`, preserving the previous CLI
+behavior. Select the other model using `--architecture ImprovedUNet2D`; both use
+the same dataset, native-shape batches, augmentation option, loss, metrics and
+recorder. The existing CLI base-width default is 4. Improved-model dropout is
+currently fixed at 0.3 in training and is recorded in `model_config`.
+
+For example, a bounded CPU check with a new output directory is:
+
+```bash
+python train.py \
+  --data-root /path/to/keras_slices_data \
+  --output-dir /path/to/new_improved_smoke_run \
+  --architecture ImprovedUNet2D \
+  --epochs 1 --batch-size 2 --base-channels 4 --device cpu --augment \
+  --max-train-batches 1 --max-val-batches 1
+```
+
+This example is an execution check, not a completed experiment. Positive batch
+limits mark the saved run as partial. The default CLI still starts a new run;
+checkpoint restore for prediction does not implement training resume.
+
+Checkpoints retain their architecture and exact model configuration. Prediction
+and checkpoint inspection restore those fields through the same factory, using
+strict state loading. Unknown architectures, invalid channel/dropout settings,
+conflicting nested/top-level model metadata and incompatible state dictionaries
+are rejected. Early baseline checkpoints with explicit top-level architecture
+and width remain supported even when nested config fields were omitted.
+
+`check_checkpoint.py` checks saved history/selection consistency and reloads the
+saved model with a finite 32-by-32 CPU probe suitable for both architectures.
+Prediction figures print the saved architecture; `prediction.json` also records
+it and the model configuration. Prediction keeps the existing partial-checkpoint
+guard and numerical-label reporting. Source hashes include `model_factory.py`.
+
+```bash
+python -m unittest -v test_model_factory test_predict test_train test_training_io
+```
+
+All 20 tests passed on Rangpur CPU on 27 October 2026: six new factory/integration
+tests, five prediction tests, three training-loop tests and six checkpoint tests.
+The new tests cover configured model construction, metadata/configuration guards,
+strict weight compatibility, old baseline prediction and the full CLI path for
+both models. Each CLI path trains for one epoch on tiny synthetic NIfTI fixtures
+with two native sizes, saves checkpoints and curves, checks the run and exports
+a validation prediction. The baseline test omits `--architecture` to verify the
+old default. Each fixture split contributes two samples and 2,560 original pixels.
+
+These CPU results validate integration and regression behavior. They do not
+establish real-data Improved-model learning, GPU memory use, inference speed or
+segmentation accuracy. Baseline GPU job 704509 used a separate unchanged scratch
+directory and was still pending at its last observed status.

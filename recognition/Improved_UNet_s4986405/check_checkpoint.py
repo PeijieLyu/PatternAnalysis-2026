@@ -6,14 +6,14 @@ from pathlib import Path
 
 import torch
 
-from modules import UNet2D
+from model_factory import model_from_checkpoint
 from training_io import load_checkpoint
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--run-dir', type=Path, required=True)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     torch.set_num_threads(1)
     directory = args.run_dir.expanduser().resolve()
     last = load_checkpoint(directory / 'last.pt')
@@ -28,16 +28,18 @@ def main():
     best_entry = min(history, key=lambda entry: entry['validation']['loss'])
     if best['epoch'] != best_entry['epoch'] or last['best_epoch'] != best_entry['epoch']:
         raise RuntimeError('Best checkpoint does not match minimum validation loss')
-    if best['architecture'] != 'UNet2D':
-        raise ValueError('This inspection script currently supports baseline UNet2D')
-    model = UNet2D(**best['model_config']).cpu()
-    model.load_state_dict(best['model_state'], strict=True)
+    if any(last[key] != best[key] for key in ('architecture', 'model_config')):
+        raise ValueError('Best/latest checkpoint model metadata mismatch')
+    model = model_from_checkpoint(best).cpu()
+    if model.in_channels != 1 or model.num_classes != 6:
+        raise ValueError('Expected one MRI input channel and six numerical label IDs')
     model.eval()
     with torch.no_grad():
-        logits = model(torch.zeros(1, 1, 32, 16))
-    if tuple(logits.shape) != (1, 6, 32, 16) or not torch.isfinite(logits).all():
+        logits = model(torch.zeros(1, 1, 32, 32))
+    if tuple(logits.shape) != (1, 6, 32, 32) or not torch.isfinite(logits).all():
         raise RuntimeError('Invalid reloaded model output')
     print('Run directory:', directory)
+    print('Architecture:', best['architecture'])
     print('History epochs:', len(history))
     print('Latest epoch:', last['epoch'])
     print('Best epoch:', best['epoch'])

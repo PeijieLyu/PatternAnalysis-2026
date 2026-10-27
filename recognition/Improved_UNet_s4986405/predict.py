@@ -1,4 +1,4 @@
-"""Load a baseline checkpoint and export one aligned validation prediction."""
+"""Load a saved architecture and export one aligned validation prediction."""
 import argparse
 import io
 import json
@@ -11,7 +11,7 @@ import torch
 
 from dataset import HipMRI2DDataset
 from metrics import confusion_matrix, dice_iou_from_confusion
-from modules import UNet2D
+from model_factory import model_from_checkpoint
 from training_io import load_checkpoint
 
 
@@ -22,8 +22,6 @@ def load_predictor(checkpoint_path, device='cpu', allow_partial=False):
         raise ValueError('Checkpoint must explicitly record partial_run')
     if config['partial_run'] and not allow_partial:
         raise ValueError('Partial checkpoint: use --allow-partial only for a smoke check')
-    if saved['architecture'] != 'UNet2D':
-        raise ValueError('This predictor currently supports baseline UNet2D checkpoints')
     model_config = saved['model_config']
     if model_config['in_channels'] != 1 or model_config['num_classes'] != 6:
         raise ValueError('Expected one MRI input channel and six numerical label IDs')
@@ -33,8 +31,7 @@ def load_predictor(checkpoint_path, device='cpu', allow_partial=False):
     device = torch.device(device)
     if device.type == 'cuda' and not torch.cuda.is_available():
         raise ValueError('CUDA is unavailable on this node')
-    model = UNet2D(**model_config)
-    model.load_state_dict(saved['model_state'], strict=True)
+    model = model_from_checkpoint(saved)
     model.to(device).eval()
     return model, saved
 
@@ -140,10 +137,11 @@ def main(argv=None):
     image_path, mask_path = dataset.pairs[args.index]
     partial = saved['config']['partial_run']
     status = 'PARTIAL CHECKPOINT - smoke only' if partial else 'Checkpoint prediction'
-    title = f'UNet2D | epoch {saved["epoch"]} | {status}\n{image_path.name}'
+    title = f'{saved["architecture"]} | epoch {saved["epoch"]} | {status}\n{image_path.name}'
     report = {
         'checkpoint': str(args.checkpoint.expanduser().resolve()), 'epoch': saved['epoch'],
         'partial_checkpoint': partial, 'image': str(image_path), 'target': str(mask_path),
+        'architecture': saved['architecture'], 'model_config': saved['model_config'],
         'normalization': 'per-slice z-score' if normalize else 'none',
         'device': args.device, 'shape': list(prediction.shape), 'label_id': args.label_id,
         'pixels': target.numel(), 'confusion': matrix.tolist(),
@@ -162,6 +160,7 @@ def main(argv=None):
     nib.save(nifti, str(destination / 'prediction.nii.gz'))
     with (destination / 'prediction.json').open('x', encoding='utf-8') as handle:
         json.dump(report, handle, indent=2, allow_nan=False)
+    print('Architecture:', saved['architecture'])
     print('Checkpoint epoch:', saved['epoch'])
     print('Partial checkpoint:', partial)
     print('Normalization:', report['normalization'])

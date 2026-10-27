@@ -14,7 +14,7 @@ import torch
 
 SOURCE_FILES = (
     'train.py', 'training_io.py', 'plot_history.py', 'gpu_profile.py', 'modules.py', 'dataset.py',
-    'losses.py', 'metrics.py', 'check_splits.py', 'shape_batching.py',
+    'losses.py', 'metrics.py', 'check_splits.py', 'shape_batching.py', 'model_factory.py',
 )
 
 

@@ -1,4 +1,4 @@
-"""Baseline training/validation with isolated checkpoints and epoch histories."""
+"""Train a selected U-Net with isolated checkpoints and epoch histories."""
 import argparse
 from itertools import islice
 import math
@@ -13,7 +13,7 @@ from dataset import HipMRI2DDataset
 from shape_batching import ShapeBatchSampler
 from losses import dice_ce_loss
 from metrics import confusion_matrix, dice_iou_from_confusion
-from modules import UNet2D
+from model_factory import ARCHITECTURES, build_model
 from training_io import RunRecorder, source_hashes
 from plot_history import plot_history
 from gpu_profile import save_gpu_profile
@@ -80,20 +80,21 @@ def report(phase, result):
         )
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--data-root', type=Path, required=True)
     parser.add_argument('--output-dir', type=Path, required=True, help='New directory for this run')
     parser.add_argument('--epochs', type=int, default=1)
     parser.add_argument('--batch-size', type=int, default=2)
     parser.add_argument('--base-channels', type=int, default=4)
+    parser.add_argument('--architecture', choices=ARCHITECTURES, default='UNet2D')
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--seed', type=int, default=3710)
     parser.add_argument('--device', choices=('cpu', 'cuda'), default='cpu')
     parser.add_argument('--augment', action='store_true')
     parser.add_argument('--max-train-batches', type=int, default=1, help='0 means all training batches')
     parser.add_argument('--max-val-batches', type=int, default=1, help='0 means all validation batches')
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if min(args.epochs, args.batch_size, args.base_channels) < 1:
         parser.error('epochs, batch-size and base-channels must be positive')
     if min(args.max_train_batches, args.max_val_batches) < 0:
@@ -140,7 +141,11 @@ def main():
         num_workers=0, generator=generator,
     )
     val_loader = DataLoader(val_dataset, batch_sampler=val_sampler, num_workers=0)
-    model = UNet2D(base_channels=args.base_channels).to(device)
+    model_config = {'in_channels': 1, 'num_classes': 6, 'base_channels': args.base_channels}
+    if args.architecture == 'ImprovedUNet2D':
+        model_config['dropout'] = 0.3
+    model = build_model(args.architecture, model_config).to(device)
+    print('Architecture:', args.architecture, flush=True)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     print(f'Device: {device}; seed: {args.seed}; base channels: {args.base_channels}', flush=True)
     print(f'Train augmentation: {args.augment}; validation augmentation: False', flush=True)
@@ -153,11 +158,11 @@ def main():
     config = {
         'arguments': {key: str(value.expanduser().resolve()) if isinstance(value, Path) else value
                       for key, value in vars(args).items()},
-        'architecture': 'UNet2D',
+        'architecture': args.architecture,
         'batching': {'strategy': 'same_shape_buckets', 'drop_last': False,
                      'train_shapes': train_sampler.shape_counts,
                      'validation_shapes': val_sampler.shape_counts},
-        'model_config': {'in_channels': 1, 'num_classes': 6, 'base_channels': args.base_channels},
+        'model_config': model_config,
         'preprocessing': {'normalize': True, 'one_hot': True, 'train_flip_probability': 0.5 if args.augment else 0.0},
         'loss': {'name': 'dice_ce_loss', 'ce_weight': 1.0, 'dice_weight': 1.0, 'smooth': 1e-5},
         'partial_run': bool(args.max_train_batches or args.max_val_batches),
