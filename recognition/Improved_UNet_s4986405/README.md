@@ -58,8 +58,8 @@ These checks do not constitute a full scan of all training image/mask contents.
 
 Optional per-slice MRI normalization and six-channel one-hot masks are
 available. Optional paired training augmentation is also available.
-Baseline training/validation loops and a single-step CPU optimizer check are
-available. Class weighting, checkpoint persistence and the improved model
+Baseline training/validation loops, checkpoint/history saving and a single-step
+CPU optimizer check are available. Class weighting and the improved model
 remain unimplemented.
 
 ## Runtime dependencies and inspection tools
@@ -152,7 +152,8 @@ It does not update parameters or evaluate segmentation accuracy.
 Both commands passed on Rangpur. A real HipMRI sample also produced finite
 logits with shape `[1, 6, 256, 128]` in a separate integration check.
 
-The baseline is untrained. GPU compatibility remains unverified; CPU
+Only limited CPU training smoke runs have been completed; no final trained
+baseline has been evaluated. GPU compatibility remains unverified; CPU
 backward checks on login0 reported a CUDA driver compatibility warning.
 
 ## Segmentation metrics and pipeline smoke check
@@ -254,11 +255,12 @@ An imaging specialist needs an offline prototype that drafts pelvic contours for
 
 Use the supplied HipMRI 2D slices and six label IDs, targeting the Normal difficulty option. Keep the implemented U-Net [1] as baseline. The proposed Improved model will adapt residual context blocks and multi-scale segmentation supervision from Isensee et al. [2]. Their original network processes 3D brain MRI; the 2D adaptation and deviations will be documented. Convolutions, skip/residual connections and overlap-based objectives connect the design to course concepts. Both models will share preprocessing, loss, splits and a matched training budget. Optional per-slice MRI z-score normalization and six-channel one-hot targets
 are available. Paired horizontal flips and baseline training/validation loops
-are implemented. Checkpoint saving and the improved model remain to be implemented.
+are implemented, together with checkpoint and history saving. The improved
+model remains to be implemented.
 
 ### Preliminary evidence already obtained
 
-Filename audits found 31/4/3 patients and 11,460/660/540 slices in train/validation/test, with no shared patient IDs. One real sample loaded as image [1,256,128] and integer mask [256,128]. The untrained baseline has 1,962,422 parameters and produced finite [1,6,256,128] logits. CPU shape/gradient checks, a two-slice pipeline check and five metric regression tests passed. No trained accuracy or GPU performance is established; diagnostic job 700650 was last observed pending.
+Filename audits found 31/4/3 patients and 11,460/660/540 slices in train/validation/test, with no shared patient IDs. One real sample loaded as image [1,256,128] and integer mask [256,128]. The default-width baseline has 1,962,422 parameters; its initial untrained forward check produced finite [1,6,256,128] logits. CPU shape/gradient checks, a two-slice pipeline check and five metric regression tests passed. No trained accuracy or GPU performance is established; diagnostic job 700650 was last observed pending.
 
 ### Five testable acceptance criteria (proposed)
 
@@ -524,6 +526,7 @@ Run a bounded CPU check from the project directory:
 python -m unittest -v test_train
 python -u train.py \
   --data-root /home/groups/comp3710/HipMRI_Study_open/keras_slices_data \
+  --output-dir "$HOME/hipmri_runs/baseline_smoke_$(date +%Y%m%d_%H%M%S)" \
   --epochs 1 --batch-size 2 --base-channels 4 --device cpu --augment \
   --max-train-batches 1 --max-val-batches 1
 ```
@@ -532,17 +535,66 @@ The defaults are one epoch, batch size 2, base width 4, CPU, learning rate 1e-3,
 one batch per phase and no augmentation. A batch limit of 0 processes every
 batch in that phase. Nonzero limits print PARTIAL RUN: their metrics describe
 only the processed subset and are not final evaluation results. This version
-saves no checkpoint or training history.
+requires a new --output-dir and saves checkpoints and epoch histories.
 
 All three training-loop test methods passed on Rangpur CPU. They verify parameter
 updates and the batch limit, validation with no gradients or model-state changes,
 pooled confusion counts including an incomplete final batch, and rejection of
 empty loaders and invalid limits.
 
-The real-data smoke run verified 31 training patients and 4 validation patients
+The initial loop-only smoke run verified 31 training patients and 4 validation patients
 with no overlap. Each phase processed two slices and 65,536 pixels. One observed
 training loss was 2.931334 and validation loss was 2.962813. Validation label 5
 had NaN Dice/IoU because it was absent from both predictions and targets in that
 batch. The run ended with `Training/validation run: PASS`. This was one CPU
 training batch followed by one validation batch; no trained checkpoint or final
 accuracy result was produced. GPU compatibility remains unverified.
+
+### Checkpoints and epoch histories
+
+Training now requires `--output-dir` naming a new run directory. An existing
+directory is rejected to protect earlier runs. Each completed epoch writes:
+
+- `last.pt`: the latest model and optimizer checkpoint.
+- `best.pt`: the first epoch with the lowest validation loss so far; ties retain
+  the earlier checkpoint. Training loss and test data do not select it.
+- `config.json`: run arguments, model and preprocessing settings, loss settings,
+  patient lists/counts, source-file SHA-256 hashes and Python/PyTorch versions.
+- `history.json` and `history.csv`: losses, processed counts and per-class
+  Dice/IoU for each epoch. JSON also retains confusion matrices.
+
+Checkpoints contain model and Adam state dictionaries, architecture and channel
+configuration, epoch, best validation loss/epoch, history, configuration, and
+PyTorch/shuffle RNG states (plus CUDA RNG states when running on CUDA). Tensor
+snapshots are stored on CPU and loaded with `weights_only=True`. Files are
+replaced atomically individually; this is not a multi-file transaction.
+
+Jointly absent metric values are stored as JSON null and empty CSV fields.
+Non-finite loss values are rejected. `partial_run` records whether either phase
+was batch-limited; such checkpoints are execution checks, not final models.
+
+```bash
+python -m unittest -v test_training_io test_train
+python check_checkpoint.py --run-dir /path/to/run
+```
+
+The six checkpoint test methods cover model output equality after reloading,
+restored Adam producing the same next update, validation-only best selection,
+JSON/CSV handling, protection of existing run directories, invalid losses/epoch
+numbers and retained RNG metadata. Together with the three loop tests, the
+combined command runs nine tests.
+
+A two-epoch Rangpur CPU smoke run processed one two-slice training batch and one
+two-slice validation batch per epoch. The latest and best checkpoints both
+corresponded to epoch 2; its validation loss was approximately 2.959447.
+`check_checkpoint.py` confirmed two history entries, agreement between JSON,
+CSV row counts and the latest checkpoint, minimum-loss selection, and strict
+model loading with finite output. Both history consistency and checkpoint
+reload checks passed. The saved run was marked `partial_run=True`.
+
+The CLI currently starts fresh runs; automatic resume is not yet implemented.
+The saved optimizer/RNG states provide the information for adding resume support.
+The single-step script `check_training_step.py` still saves no checkpoint.
+Model weight extensions (`*.pt`, `*.pth`, `*.ckpt`) and the project's `/runs/`
+directory are ignored by Git. Runtime outputs should remain outside source
+control. No final segmentation accuracy or GPU compatibility is established.

@@ -1,4 +1,4 @@
-"""Baseline training/validation loops; defaults run a bounded CPU smoke check."""
+"""Baseline training/validation with isolated checkpoints and epoch histories."""
 import argparse
 from itertools import islice
 import math
@@ -12,6 +12,7 @@ from dataset import HipMRI2DDataset
 from losses import dice_ce_loss
 from metrics import confusion_matrix, dice_iou_from_confusion
 from modules import UNet2D
+from training_io import RunRecorder, source_hashes
 
 
 def run_epoch(model, loader, device, optimizer=None, max_batches=None):
@@ -78,6 +79,7 @@ def report(phase, result):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--data-root', type=Path, required=True)
+    parser.add_argument('--output-dir', type=Path, required=True, help='New directory for this run')
     parser.add_argument('--epochs', type=int, default=1)
     parser.add_argument('--batch-size', type=int, default=2)
     parser.add_argument('--base-channels', type=int, default=4)
@@ -130,10 +132,25 @@ def main():
     print(f'Train augmentation: {args.augment}; validation augmentation: False', flush=True)
     print(
         f'Batch limits: train={args.max_train_batches}, validation={args.max_val_batches} '
-        '(0=all batches). No checkpoint is saved by this version.', flush=True,
+        '(0=all batches).', flush=True,
     )
     if args.max_train_batches or args.max_val_batches:
         print('PARTIAL RUN: subset metrics are execution checks, not final evaluation.', flush=True)
+    config = {
+        'arguments': {key: str(value.expanduser().resolve()) if isinstance(value, Path) else value
+                      for key, value in vars(args).items()},
+        'architecture': 'UNet2D',
+        'model_config': {'in_channels': 1, 'num_classes': 6, 'base_channels': args.base_channels},
+        'preprocessing': {'normalize': True, 'one_hot': True, 'train_flip_probability': 0.5 if args.augment else 0.0},
+        'loss': {'name': 'dice_ce_loss', 'ce_weight': 1.0, 'dice_weight': 1.0, 'smooth': 1e-5},
+        'partial_run': bool(args.max_train_batches or args.max_val_batches),
+        'splits': {'train_patients': sorted(train_patients), 'validation_patients': sorted(val_patients),
+                   'train_slices': train_count, 'validation_slices': val_count},
+        'source_sha256': source_hashes(Path(__file__).resolve().parent),
+    }
+    recorder = RunRecorder(args.output_dir, config)
+    print('Run directory:', recorder.directory, flush=True)
+    print('Best checkpoint criterion: minimum validation loss', flush=True)
     for epoch in range(1, args.epochs + 1):
         print(f'Epoch {epoch}/{args.epochs}', flush=True)
         train_result = run_epoch(
@@ -145,6 +162,10 @@ def main():
         )
         report('Train', train_result)
         report('Validation', val_result)
+        improved = recorder.record(
+            epoch, model, optimizer, train_result, val_result, generator,
+        )
+        print(f'Saved epoch {epoch}; best epoch={recorder.best_epoch}; new best={improved}', flush=True)
     print('Training/validation run: PASS', flush=True)
 
 
