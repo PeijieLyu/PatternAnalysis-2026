@@ -61,8 +61,9 @@ available. Optional paired training augmentation is also available.
 Baseline training/validation loops, checkpoint/history saving and a single-step
 CPU optimizer check are available. ImprovedUNet2D is implemented and its
 architecture tests passed on CPU. Training, prediction and checkpoint checking
-support both architectures, with CPU integration tests passed. Class weighting
-remains unimplemented.
+support both architectures, with CPU integration tests passed. Numeric-label
+evaluation exports pooled, patient, case and slice metrics with timing records.
+Class weighting remains unimplemented.
 
 ## Runtime dependencies and inspection tools
 
@@ -272,7 +273,7 @@ Filename audits found 31/4/3 patients and 11,460/660/540 slices in train/validat
 1. Preserve patient separation and image/mask alignment through preprocessing, demonstrated by split checks, tests and overlays.
 2. Target prostate pooled test Dice >= 0.75; also report all-class Dice/IoU and patient-wise summaries. Confirm primary aggregation with the tutor; freeze it before training.
 3. Compare baseline and Improved models on identical held-out patients; analyse 3-5 actual boundary failures with MRI, ground truth, prediction and false-positive/false-negative overlays.
-4. Proposed resource limits: peak GPU VRAM <= 12 GiB and median model-only inference <= 100 ms per 256x128 slice at batch size 1, after warm-up and CUDA synchronization. Also report per-case runtime. These remain proposed full-experiment targets; bounded allocator-memory observations are now available below, while inference latency remains unmeasured.
+4. Proposed resource limits: peak GPU VRAM <= 12 GiB and median model-only inference <= 100 ms per 256x128 slice at batch size 1, after warm-up and CUDA synchronization. Also report per-case runtime. These remain proposed full-experiment targets; bounded allocator-memory observations are now available below, while GPU inference latency remains unmeasured.
 5. Record exact dependencies, seeds, configurations and checkpoint selection. Select settings on validation data; use test data only after the experiment protocol is frozen.
 
 ### Risks, budget, next experiment and fallback
@@ -291,7 +292,7 @@ Requirements checked against COMP3710/COMP7710 assessment specification v2.5, Se
 
 ### Tools and assistance
 
-OpenAI ChatGPT and Codex assisted with substantial code scaffolding and documentation drafts. Assistance covered NIfTI image/mask pairing; the PyTorch Dataset and its validation checks; baseline U-Net components and assembly; Dice/IoU metrics; inspection, visualization and regression-test scripts; Git commands; Conda/Slurm troubleshooting; assessment-requirement review; literature lookup; and drafting this feasibility review and disclosure. Subsequent assistance also covered optional MRI z-score normalization, six-channel one-hot targets, paired training flips, the Dice/CE loss, training/validation loops, checkpoint and history persistence, training-curve plotting, and checkpoint-based prediction/export, and full-model GPU smoke-job/profiling code, native-shape batching, and the paper-inspired 2D Improved model architecture and the shared architecture-selection/checkpoint-loading paths with their tests. The assistance included proposing experiments and acceptance criteria, which remain plans rather than measured results. This disclosure does not assert use of other AI tools that has not been confirmed.
+OpenAI ChatGPT and Codex assisted with substantial code scaffolding and documentation drafts. Assistance covered NIfTI image/mask pairing; the PyTorch Dataset and its validation checks; baseline U-Net components and assembly; Dice/IoU metrics; inspection, visualization and regression-test scripts; Git commands; Conda/Slurm troubleshooting; assessment-requirement review; literature lookup; and drafting this feasibility review and disclosure. Subsequent assistance also covered optional MRI z-score normalization, six-channel one-hot targets, paired training flips, the Dice/CE loss, training/validation loops, checkpoint and history persistence, training-curve plotting, and checkpoint-based prediction/export, and full-model GPU smoke-job/profiling code, native-shape batching, and the paper-inspired 2D Improved model architecture and the shared architecture-selection/checkpoint-loading paths, split evaluation, patient/case metric aggregation and separated inference timing with their tests. The assistance included proposing experiments and acceptance criteria, which remain plans rather than measured results. This disclosure does not assert use of other AI tools that has not been confirmed.
 
 ### Verification performed so far
 
@@ -319,10 +320,11 @@ The student ran the suggested commands in the local WSL repository and on Rangpu
 - Running all 20 shared-model-selection, prediction, training-loop and checkpoint tests successfully on Rangpur CPU, including synthetic training/save/reload/prediction for both architectures and old baseline checkpoint compatibility.
 - Running an Improved-model real-MRI CPU smoke epoch and checking saved curves, history consistency and checkpoint reloading.
 - Confirming baseline GPU job 704509 and Improved GPU job 704574 both completed with ExitCode 0:0, successful checkpoint checks and final smoke PASS markers, then reviewing their bounded allocator-memory profiles with AI assistance.
+- Running all 13 evaluation/metric regression tests successfully on Rangpur CPU and exporting a two-slice real validation smoke evaluation from Improved checkpoint 704574, with patient separation and partial scope retained.
 
 ### Current limits and responsibility
 
-Both architectures passed limited real-MRI GPU training/validation, checkpoint and allocator-profile checks. The Improved model also passed a real-MRI CPU smoke run. No fully trained model or comparative held-out result has been evaluated. Short-run tensor/allocator peaks are recorded below; the proposed long-run resource budget, whole-device memory target, inference latency and target prostate Dice remain unverified. The anatomical meaning of label IDs must be checked against dataset metadata before prostate-specific reporting. The full dataset contents have not been exhaustively scanned.
+Both architectures passed limited real-MRI GPU training/validation, checkpoint and allocator-profile checks. The Improved model also passed a real-MRI CPU smoke run. No fully trained model or comparative held-out result has been evaluated. Short-run tensor/allocator peaks are recorded below; the proposed long-run resource budget, whole-device memory target, GPU inference latency and target prostate Dice remain unverified. The evaluation tool passed synthetic CPU tests and a two-slice real validation export; those results are smoke checks. The anatomical meaning of label IDs must be checked against dataset metadata before prostate-specific reporting. The full dataset contents have not been exhaustively scanned.
 
 The student remains responsible for reviewing, understanding, correcting and explaining the submitted code, references, experimental design and report. The checks above document observed execution and do not establish that every line has received an independent manual audit. This disclosure must be updated as implementation, verification and actual AI use change. The tutor feasibility check-off remains incomplete.
 
@@ -998,5 +1000,81 @@ Image-header grouping reported 11,400 training slices of shape [256,128] and
 60 of shape [256,144], plus 660 validation slices of shape [256,128]. Patient
 separation passed for 31 training and four validation patients. These header
 counts do not constitute an exhaustive image/mask contents audit. Full training,
-held-out/patient-level evaluation, model-only latency, anatomical label mapping
+held-out/patient-level final evaluation, GPU model-only latency, anatomical label mapping
 and compulsory tutor check-off remain to be completed.
+
+### Split evaluation, patient metrics and inference timing
+
+`evaluate.py` restores either architecture from its checkpoint and evaluates
+numerical labels 0-5 at native slice sizes, with inference batch size 1. It uses
+the saved normalization setting and disables training augmentation and autograd.
+Confusion counts are pooled over original pixels independently at global,
+patient and patient/week-case levels. It does not average slice Dice scores.
+A case means one patient/week acquisition; patient results combine all included
+weeks. CSV rows include TP/FP/FN, target/prediction counts and Dice/IoU for each
+numerical label. No label ID is assumed to be the prostate.
+
+Input checks compare evaluation patients with the checkpoint's training and
+validation IDs. Validation patient IDs and total slice count must match the saved
+split metadata. Duplicate patient/week/slice identifiers are rejected. Validation
+smoke checks can explicitly allow partial checkpoints or limit selected samples;
+these remain marked in JSON and every CSV. Test mode requires a non-partial
+checkpoint, no sample limit, and patients disjoint from both training and
+validation. The actual test split must remain unused until the experiment
+protocol is frozen. Test-mode regression fixtures use temporary synthetic data.
+
+Each selected shape is warmed up three times by default. Model-forward timing
+excludes image loading, preprocessing, input transfer, argmax and metrics. CUDA
+is synchronized before and after the measured forward call, consistent with
+[PyTorch's synchronization API](https://docs.pytorch.org/docs/2.14/generated/torch.cuda.synchronize.html).
+One forward is timed per selected slice; medians are reported overall and by
+native shape. This is a stated sampling protocol, not repeated-trial latency
+confidence estimation. GPU timing and repeated trials remain necessary for the
+resource comparison.
+
+Per-case processing time separately includes slice I/O, preprocessing, transfers,
+forward execution, argmax and confusion accumulation; it excludes shape warmup
+and result export. Patient processing time sums its included cases. Checkpoint
+SHA256 is checked before and after evaluation to detect concurrent modification.
+Saved checkpoint provenance and current evaluator/dependency source hashes are
+recorded. Evaluation always requires a new output directory.
+
+Output files are:
+
+- `evaluation.json`: configuration, scope, provenance, confusion matrices,
+  per-class results and timing details.
+- `pooled_metrics.csv`, `patients_metrics.csv`, `cases_metrics.csv` and
+  `slice_metrics.csv`: numeric-label metrics and scope flags.
+- `case_times.csv`: processing time for each included patient/week case.
+
+Absent classes receive JSON null and empty CSV metric cells when absent from
+both prediction and target. Missed or falsely predicted classes receive zero
+overlap as appropriate. The existing output directory is preserved on refusal.
+
+```bash
+python -m unittest -v test_evaluate test_metrics
+python evaluate.py \
+  --checkpoint /path/to/run/best.pt \
+  --data-root /path/to/keras_slices_data \
+  --split validate --output-dir /path/to/new_evaluation --device cpu \
+  --max-samples 2 --allow-partial
+```
+
+All 13 test methods passed on Rangpur CPU on 27 October 2026: eight new evaluation
+tests plus five existing metric tests. Coverage includes hand-calculated global
+and patient scores across different native sizes, absent-class serialization,
+subset/partial/test guards, patient/count/filename checks, non-finite output,
+checkpoint modification and preserving existing outputs.
+
+A subsequent real validation check used the partial Improved GPU checkpoint
+`$HOME/hipmri_runs/improved_gpu_smoke_704574/best.pt`. It processed only 2 of 660
+validation slices, representing one patient and one case. Patient separation and
+evaluation export passed, with `smoke_only=true`. Outputs were saved under
+`$HOME/hipmri_runs/improved_eval_smoke_20261027_173139`.
+
+Numerical label 4 was absent from both predictions and targets, so its overlap
+metrics were undefined. Other two-slice scores do not establish generalization,
+prostate accuracy or superiority over the baseline. The observed CPU median
+model-forward time was about 133.56 ms over just two timed forwards after warmup;
+it is a pipeline check, not a GPU latency result. Full validation/test evaluation
+on fully trained checkpoints and repeated GPU timing remain pending.
