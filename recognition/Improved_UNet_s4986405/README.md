@@ -154,9 +154,9 @@ It does not update parameters or evaluate segmentation accuracy.
 Both commands passed on Rangpur. A real HipMRI sample also produced finite
 logits with shape `[1, 6, 256, 128]` in a separate integration check.
 
-Only limited CPU training smoke runs have been completed; no final trained
-baseline has been evaluated. A Slurm CUDA convolution check has passed;
-U-Net GPU training remains unverified. CPU backward checks on login0
+Limited CPU and GPU training smoke runs have completed; no final trained
+baseline has been evaluated. Bounded full-model GPU checks for both architectures
+passed (see the latest real-MRI evidence below). CPU backward checks on login0
 reported a CUDA driver compatibility warning.
 
 ## Segmentation metrics and pipeline smoke check
@@ -229,7 +229,8 @@ does not indicate success.
 After its account and memory request were corrected, diagnostic job 700650
 completed on a100-1 with state COMPLETED and ExitCode 0:0. Its log reported
 `CUDA convolution forward/backward: PASS`. This verifies the small CUDA
-diagnostic on the allocated node; full-model GPU training remains unverified.
+diagnostic on the allocated node. Later full-model GPU smoke checks for both
+architectures also passed, as recorded in the latest evidence below.
 
 ## Metric regression tests
 
@@ -257,26 +258,26 @@ An imaging specialist needs an offline prototype that drafts pelvic contours for
 
 ### Scope, model choice and course concepts
 
-Use the supplied HipMRI 2D slices and six label IDs, targeting the Normal difficulty option. Keep the implemented U-Net [1] as baseline. The implemented Improved model adapts residual context blocks and multi-scale segmentation outputs from Isensee et al. [2]. Their original network processes 3D brain MRI; the 2D adaptation and deviations are documented below. Eight CPU architecture tests and the shared-CLI CPU integration checks passed; real-data Improved-model training and comparative experiments remain pending. Convolutions, skip/residual connections and overlap-based objectives connect the design to course concepts. Both models will share preprocessing, loss, splits and a matched training budget. Optional per-slice MRI z-score normalization and six-channel one-hot targets
+Use the supplied HipMRI 2D slices and six label IDs, targeting the Normal difficulty option. Keep the implemented U-Net [1] as baseline. The implemented Improved model adapts residual context blocks and multi-scale segmentation outputs from Isensee et al. [2]. Their original network processes 3D brain MRI; the 2D adaptation and deviations are documented below. Eight CPU architecture tests and the shared-CLI CPU integration checks passed; real-data Improved-model CPU/GPU smoke runs also passed; full training and comparative experiments remain pending. Convolutions, skip/residual connections and overlap-based objectives connect the design to course concepts. Both models will share preprocessing, loss, splits and a matched training budget. Optional per-slice MRI z-score normalization and six-channel one-hot targets
 are available. Paired horizontal flips and baseline training/validation loops
 are implemented, together with checkpoint and history saving. The Improved
 model class and its training/prediction CLI integration are implemented and CPU-tested.
 
 ### Preliminary evidence already obtained
 
-Filename audits found 31/4/3 patients and 11,460/660/540 slices in train/validation/test, with no shared patient IDs. One real sample loaded as image [1,256,128] and integer mask [256,128]. The default-width baseline has 1,962,422 parameters; its initial untrained forward check produced finite [1,6,256,128] logits. CPU shape/gradient checks, a two-slice pipeline check and five metric regression tests passed. No trained accuracy or GPU performance is established. Diagnostic job 700650 completed successfully on an A100; full-model GPU training is still to be validated.
+Filename audits found 31/4/3 patients and 11,460/660/540 slices in train/validation/test, with no shared patient IDs. One real sample loaded as image [1,256,128] and integer mask [256,128]. The default-width baseline has 1,962,422 parameters; its initial untrained forward check produced finite [1,6,256,128] logits. CPU shape/gradient checks, a two-slice pipeline check and five metric regression tests passed. No final trained accuracy or inference-speed result is established. Diagnostic job 700650 completed on an A100; full-model GPU smoke jobs 704509 and 704574 later completed successfully, with bounded memory observations recorded below.
 
 ### Five testable acceptance criteria (proposed)
 
 1. Preserve patient separation and image/mask alignment through preprocessing, demonstrated by split checks, tests and overlays.
 2. Target prostate pooled test Dice >= 0.75; also report all-class Dice/IoU and patient-wise summaries. Confirm primary aggregation with the tutor; freeze it before training.
 3. Compare baseline and Improved models on identical held-out patients; analyse 3-5 actual boundary failures with MRI, ground truth, prediction and false-positive/false-negative overlays.
-4. Proposed resource limits: peak GPU VRAM <= 12 GiB and median model-only inference <= 100 ms per 256x128 slice at batch size 1, after warm-up and CUDA synchronization. Also report per-case runtime. These limits are unmeasured targets.
+4. Proposed resource limits: peak GPU VRAM <= 12 GiB and median model-only inference <= 100 ms per 256x128 slice at batch size 1, after warm-up and CUDA synchronization. Also report per-case runtime. These remain proposed full-experiment targets; bounded allocator-memory observations are now available below, while inference latency remains unmeasured.
 5. Record exact dependencies, seeds, configurations and checkpoint selection. Select settings on validation data; use test data only after the experiment protocol is frozen.
 
 ### Risks, budget, next experiment and fallback
 
-Key risks are class imbalance, only three test patients, unverified anatomical label-ID mapping/slice ordering, missing 3D context and unverified full-model GPU training/resource use. Verify metadata before prostate/base/apex analysis. Proposed initial budget: two one-hour GPU pilots, then two comparison runs capped at four GPU-hours each. Next: finish check-off, validate full-model GPU training, check the Improved model on real MRI data and an allocated GPU, and run matched experiments using the shared preprocessing. Reduce batch size/channel width if needed. If only baseline is feasible, report the Easy fallback honestly and discuss the revised scope with the tutor.
+Key risks are class imbalance, only three test patients, unverified anatomical label-ID mapping/slice ordering, missing 3D context and unverified long-run resource use and final model quality. Verify metadata before prostate/base/apex analysis. Proposed initial budget: two one-hour GPU pilots, then two comparison runs capped at four GPU-hours each. Next: finish check-off, confirm label anatomy, freeze the comparison protocol, and run full training/evaluation using the shared preprocessing. Both models have passed bounded real-MRI GPU smoke checks. Reduce batch size/channel width if needed. If only baseline is feasible, report the Easy fallback honestly and discuss the revised scope with the tutor.
 
 ### References
 
@@ -313,13 +314,15 @@ The student ran the suggested commands in the local WSL repository and on Rangpu
 - Confirming Slurm job 700650 completed with exit code 0:0 and its CUDA convolution forward/backward check passed on an allocated A100 node.
 - Running all five prediction tests successfully, exporting a real validation prediction, and reviewing its aligned numeric-label/TP/FP/FN panels with AI assistance.
 - Running three memory-report unit tests plus three training-loop tests successfully on CPU and checking the Slurm script syntax. GPU smoke job 704367 later raised a heterogeneous-slice batching error in epoch 2.
-- Running six native-shape batching tests plus three training-loop tests successfully on Rangpur CPU, then submitting replacement GPU smoke job 704509; it was observed pending with reason Priority.
+- Running six native-shape batching tests plus three training-loop tests successfully on Rangpur CPU, then confirming replacement GPU smoke job 704509 completed successfully after the original heterogeneous-shape failure.
 - Running all eight Improved-model architecture tests successfully on Rangpur CPU, including shared-loss backward/optimizer checks and baseline compatibility; the default Improved model reported 3,187,746 parameters.
 - Running all 20 shared-model-selection, prediction, training-loop and checkpoint tests successfully on Rangpur CPU, including synthetic training/save/reload/prediction for both architectures and old baseline checkpoint compatibility.
+- Running an Improved-model real-MRI CPU smoke epoch and checking saved curves, history consistency and checkpoint reloading.
+- Confirming baseline GPU job 704509 and Improved GPU job 704574 both completed with ExitCode 0:0, successful checkpoint checks and final smoke PASS markers, then reviewing their bounded allocator-memory profiles with AI assistance.
 
 ### Current limits and responsibility
 
-Baseline training has only undergone limited smoke runs; a final trained model has not been evaluated. The Improved model class and shared training/prediction CLI passed CPU tests on synthetic fixtures; real-data Improved-model training, GPU profiling and comparative evaluation remain unverified. The target prostate Dice, GPU memory, inference latency and proposed resource budgets have not been demonstrated. The Slurm CUDA convolution diagnostic completed successfully on an allocated A100 node; full-model GPU training and profiling remain unverified. The anatomical meaning of label IDs must be checked against dataset metadata before prostate-specific reporting. The full dataset contents have not been exhaustively scanned.
+Both architectures passed limited real-MRI GPU training/validation, checkpoint and allocator-profile checks. The Improved model also passed a real-MRI CPU smoke run. No fully trained model or comparative held-out result has been evaluated. Short-run tensor/allocator peaks are recorded below; the proposed long-run resource budget, whole-device memory target, inference latency and target prostate Dice remain unverified. The anatomical meaning of label IDs must be checked against dataset metadata before prostate-specific reporting. The full dataset contents have not been exhaustively scanned.
 
 The student remains responsible for reviewing, understanding, correcting and explaining the submitted code, references, experimental design and report. The checks above document observed execution and do not establish that every line has received an independent manual audit. This disclosure must be updated as implementation, verification and actual AI use change. The tutor feasibility check-off remains incomplete.
 
@@ -511,7 +514,8 @@ The script defaults to the Rangpur teaching dataset; use `--data-root` to select
 another directory containing the training image and mask folders. It saves no
 checkpoint and reports no segmentation accuracy. CPU backward emitted a CUDA
 driver warning, but both CPU checks completed successfully. A subsequent Slurm
-CUDA convolution test passed; U-Net GPU training remains unverified.
+CUDA convolution test passed. Bounded GPU training checks for both models
+have since passed; see the latest real-MRI evidence below.
 
 ### Baseline training and validation loops
 
@@ -563,7 +567,8 @@ had NaN Dice/IoU because it was absent from both predictions and targets in that
 batch. The run ended with `Training/validation run: PASS`. This was one CPU
 training batch followed by one validation batch; no trained checkpoint or final
 accuracy result was produced. The separate Slurm CUDA diagnostic has since
-passed; full-model GPU training remains unverified.
+passed. Later full-model GPU smoke checks for both architectures passed;
+see the latest real-MRI evidence below.
 
 ### Checkpoints and epoch histories
 
@@ -612,8 +617,9 @@ The saved optimizer/RNG states provide the information for adding resume support
 The single-step script `check_training_step.py` still saves no checkpoint.
 Model weight extensions (`*.pt`, `*.pth`, `*.ckpt`) and the project's `/runs/`
 directory are ignored by Git. Runtime outputs should remain outside source
-control. No final segmentation accuracy or full-model GPU training result is
-established; the separate Slurm CUDA convolution check has passed.
+control. No final segmentation accuracy is established. Bounded full-model
+GPU training/profile checks have since passed for both architectures; see the
+latest real-MRI evidence below.
 
 ### Training history plots
 
@@ -771,10 +777,9 @@ DataLoader stacking error in epoch 2: image tensors [1, 256, 128] and
 [1, 256, 144] occurred in the same batch. It did not reach the final
 checkpoint/history checks, GPU profile export or smoke-check PASS marker.
 After the native-shape batching fix described below, replacement job 704509
-was submitted on 27 October 2026 and observed PD with reason Priority.
-Successful completion and memory results for the replacement job remain
-unverified. The earlier completed job 700650 validated only a small CUDA
-convolution; it does not substitute for this full-model check.
+completed with state COMPLETED, ExitCode 0:0 on a100-5 and the final GPU smoke
+PASS marker. Its bounded profile is recorded in the latest evidence below.
+The earlier job 700650 validated only a small CUDA convolution.
 
 The previously transcribed real-prediction FN count was corrected from 23919
 to 25191 against the terminal output; TP=0 and FP=0 were unchanged. GPU job logs
@@ -818,8 +823,8 @@ This establishes CPU regression checks, not successful GPU execution.
 
 Original job 704367 and its existing artifacts are retained. Replacement job
 704509 uses the same bounded baseline settings and its own job-specific log/run
-directory. At this checkpoint it was queued with reason Priority; no completed
-GPU profile or final segmentation result is claimed.
+directory. It subsequently completed successfully with a GPU profile and
+checkpoint checks, as recorded below. No final segmentation result is claimed.
 
 ### ImprovedUNet2D architecture and CPU verification
 
@@ -875,10 +880,10 @@ strict state reloading/output equivalence of the existing baseline.
 
 `train.py`, `predict.py` and `check_checkpoint.py` now support both architectures
 through the shared factory described below. CPU integration tests use synthetic
-data; the Improved model has not undergone a real-data training run, GPU memory
-profile or held-out evaluation. Its architecture tests were executed
-in a separate scratch directory from baseline GPU job 704509, which was still
-PENDING with no assigned node when last checked. Label anatomy and the tutor
+data. Subsequent Improved-model real-MRI CPU and GPU smoke runs passed;
+its bounded GPU profile is recorded below. Full training and held-out evaluation
+remain pending. Architecture/CLI tests and the Improved GPU job used a separate
+scratch directory from baseline GPU job 704509. Label anatomy and the tutor
 check-off remain unresolved.
 
 ### Shared model selection and checkpoint consumers
@@ -933,5 +938,65 @@ old default. Each fixture split contributes two samples and 2,560 original pixel
 
 These CPU results validate integration and regression behavior. They do not
 establish real-data Improved-model learning, GPU memory use, inference speed or
-segmentation accuracy. Baseline GPU job 704509 used a separate unchanged scratch
-directory and was still pending at its last observed status.
+segmentation accuracy by themselves. Subsequent real-MRI checks are recorded
+below. Baseline GPU job 704509 completed successfully using a separate scratch
+directory; Improved GPU job 704574 also completed successfully.
+
+### Verified real-MRI smoke runs for both architectures
+
+On 27 October 2026, both bounded GPU jobs completed with Slurm state COMPLETED,
+ExitCode 0:0, successful history/checkpoint reloading and their final smoke PASS
+markers. Each used one NVIDIA A100-PCIE-40GB, native-shape batches, base width 16,
+requested batch size 2, paired training flips and the shared normalization/loss.
+Each completed two epochs limited to two training batches and one validation
+batch per epoch: four train samples and two validation samples in each epoch.
+Both saved `partial_run=true`; neither used the held-out test split.
+
+| Observation | Baseline UNet2D | ImprovedUNet2D |
+|---|---:|---:|
+| Slurm job | 704509 | 704574 |
+| Node | a100-5 | a100-9 |
+| Peak allocated bytes | 126316032 | 289378304 |
+| Peak allocated GiB | 0.117641 | 0.269505 |
+| Peak reserved bytes | 159383552 | 329252864 |
+| Peak reserved GiB | 0.148438 | 0.306641 |
+| Observed run wall time, seconds | 25.32 | 25.48 |
+
+Both reported PyTorch 2.14.0+cu130, PyTorch CUDA build 13.0 and the native
+allocator backend. Improved-model dropout was 0.3. Memory observations are
+PyTorch tensor/allocator peaks, not whole-device NVIDIA-SMI measurements. Wall
+time includes data preparation, checkpoint I/O and plotting; it is not model-only
+inference latency. These are single short jobs on different A100 nodes, without
+repeat timing trials. Their close wall times and small validation losses do not
+establish speed or segmentation-quality superiority. Resource measurements must
+be repeated for the actual training/evaluation configuration.
+
+Saved GPU runs are outside the source repository:
+- `$HOME/hipmri_runs/unet_gpu_smoke_704509`
+- `$HOME/hipmri_runs/improved_gpu_smoke_704574`
+
+The baseline ran from `$HOME/hipmri_commit6_check`; the Improved model ran from
+`$HOME/hipmri_improved_checks`. Their saved source hashes/configuration records
+preserve the distinct runtime snapshots. Original failed job 704367 and its
+existing artifacts were retained after the native-shape batching fix.
+
+`gpu_improved_smoke.sbatch` requests the same A100/CPU/count/time settings as the
+baseline script, with explicit `--architecture ImprovedUNet2D`. It uses a unique
+`improved_gpu_smoke_JOB_ID` run directory and `improved-gpu-smoke-JOB_ID.log` log.
+Its five-minute limit, fail-on-error behavior, checkpoint check and final PASS
+marker bound and verify the diagnostic. Shell syntax validation passed before
+job 704574 was submitted. Both GPU log patterns are ignored by Git.
+
+The Improved model also passed a separate CPU real-MRI smoke run at base width 4
+and seed 3710, saved under
+`$HOME/hipmri_runs/improved_cpu_smoke_20261027_170503`. One epoch processed one
+train batch and one validation batch, each with two samples / 65,536 pixels.
+Training/validation, history consistency and checkpoint reload reported PASS;
+curves were saved and the checkpoint retained `partial_run=true`.
+
+Image-header grouping reported 11,400 training slices of shape [256,128] and
+60 of shape [256,144], plus 660 validation slices of shape [256,128]. Patient
+separation passed for 31 training and four validation patients. These header
+counts do not constitute an exhaustive image/mask contents audit. Full training,
+held-out/patient-level evaluation, model-only latency, anatomical label mapping
+and compulsory tutor check-off remain to be completed.
