@@ -2,25 +2,66 @@
 
 COMP3710 Pattern Recognition Final Project | s4986405 | Normal difficulty
 
-This project implements a basic 2D U-Net and a residual, multi-scale 2D Improved U-Net for the supplied HipMRI pelvic MRI slices. It investigates whether extra model complexity produces better overlap and fewer contour corrections at an acceptable memory and runtime cost. The intended output is an offline segmentation draft for human review. The course task targets prostate segmentation; the numerical-to-anatomical label mapping has not been independently confirmed, so all measured results retain IDs 0-5.
+This project implements a basic 2D U-Net and a residual, multi-scale 2D Improved U-Net for the supplied HipMRI pelvic MRI slices. It investigates whether extra model complexity produces better overlap and fewer contour corrections at an acceptable memory and runtime cost. The intended output is an offline segmentation draft for human review. The course task targets prostate segmentation. MRI/reference/prediction analysis in this revision supports prostate = ID 5 as an image-based interpretation; original numeric IDs and measured results are preserved.
 
 ## Current evidence and scope
 
-Both models completed the same 20-epoch training budget and three complete validation passes. The Improved model increased five pooled label Dice scores but reduced ID-3 Dice; the mean over six pooled labels changed from 0.912343 to 0.911856. Its validation model-forward time was about 2.80 times the baseline and peak allocated training memory about 2.51 times the baseline. These observations support a trade-off analysis, not a claim of overall superiority.
+**Updated 29 October 2026 following the tutor discussion.** Both models completed matched 20-epoch training and three full validation and test passes. Image-based analysis identifies **ID 5 as the prostate** (an inferred mapping with illustrated evidence). Its pooled test Dice improves from **0.803655 to 0.843050 (+3.939 percentage points)**, with fewer false positives and false negatives. The six-ID test mean increases from **0.917867 to 0.924320 (+0.645 pp)**. IDs 3 and 4 decline, and Improved model-forward inference is 2.912x slower on the local RTX 4070.
 
-Four actual validation failure examples and one improvement example were re-inferred and reviewed. Their MRI, reference, prediction and TP/FP/FN figures are included below. A separate fixed-model held-out protocol covers all 540 test slices and all six numeric labels. The user requested local execution to avoid the queue. Both fixed models subsequently completed three full passes on the local RTX 4070. Local results, audit checks and two figures are included below; downloaded remote accounting separately reports that job 705243 had already completed before the cancellation attempt.
-
-| Evidence | Observed status |
+| Evidence | Current status |
 |---|---|
-| Matched training and full validation | Completed; both Slurm tasks exited 0:0 and printed PASS |
-| Validation result records and figures | Downloaded, recomputed and visually reviewed with AI assistance |
-| Five real validation overlays | Completed and reviewed; diagnostic examples selected post hoc |
-| Fixed-model held-out evaluation | Completed locally: both models, three full passes each, 540/540 slices per pass |
-| Anatomical mapping and prostate Dice target | Unverified; keep numeric IDs |
-| Tutor feasibility check-off | Not completed |
-| Whole-device peak VRAM | Unverified; allocator measurements reported separately |
+| Matched training and validation | Completed; both full Slurm tasks passed |
+| Full local test evaluation | Completed; 540/540 slices, both fixed models, three passes each |
+| Compulsory tutor feasibility check-off | Completed, as reported by the student on 29 October 2026 |
+| Prostate label identification | ID 5, inferred from MRI/reference/prediction anatomy; illustrated below |
+| Task-specific accuracy target | ID-5 pooled test Dice 0.843050 exceeds 0.75 under this interpretation |
+| Whole-device peak VRAM | Unverified; allocator measurements are reported separately |
 
-This report describes an experimental prototype. It does not establish clinical suitability, an approved feasibility check-off, or independent replication across training seeds.
+The result supports a measured task-specific accuracy/resource trade-off. It does not establish clinical suitability, uniform improvement across labels/slices or replication across training seeds.
+
+## Prostate identification and direct baseline comparison
+
+**Tutor follow-up, 29 October 2026.** The student reports completing the compulsory feasibility check-off. The tutor requested image-based identification of the prostate ID and a clearer account of the improvement over baseline. This revision addresses those points; the original training, checkpoints, full-test predictions and numeric-label metrics are unchanged.
+
+### Why ID 5 is interpreted as the prostate
+
+**The image-based interpretation is prostate = ID 5.** The review compared MRI appearance with the supplied reference masks and both fixed models' predictions, rather than choosing the ID with the highest Dice. In all three test patients, ID 5 forms a compact central region immediately below the bright bladder-like ID-3 region in the rotated display. Neighboring filename-index slices show its relationship to the more posterior rectum-like ID-4 region. ID 2 follows extensive pelvic/bony structures. These spatial and morphological relationships are consistent with prostate anatomy [4,5].
+
+The figures and [anatomical analysis](ANATOMICAL_LABEL_ANALYSIS.md) document this inference. The course specification names the relevant structures but provides no numerical dictionary. Identity NIfTI affines and empty descriptions do not recover patient-space orientation, physical spacing or a definitive base/apex assignment. Accordingly, this is a reproducible image-based coursework interpretation, not an official dataset dictionary or a mapping confirmed by the tutor. All original numeric IDs are retained.
+
+![MRI, reference labels and fixed-model ID-5 predictions](results/anatomy_review/anatomy_and_fixed_predictions.png)
+
+The three displayed examples use week 0 and the largest reference ID-5 area per patient, with the lowest slice index breaking ties. Selection does not use either model's Dice or improvement. Patient 41's displayed slice is worse for Improved (0.929843 to 0.908316), even though that patient's pooled ID-5 Dice improves. These images illustrate anatomy and local behavior, not the frequency of success.
+
+![Neighboring slices supporting the anatomical interpretation](results/anatomy_review/neighboring_reference_slices.png)
+
+### How much better is the trained model?
+
+The primary task-specific comparison is the **whole-test pooled ID-5 Dice: 0.803655 baseline versus 0.843050 Improved**, an absolute increase of **0.039394 Dice**, or **3.939 percentage points**. Relative to baseline Dice this is **4.90%**, a different quantity from percentage points. Under the image-based ID-5 interpretation, both models exceed the course's pooled test Dice target of 0.75; Improved exceeds it by 9.305 percentage points. This does not imply every slice exceeds 0.75.
+
+| Measurement and scope | Baseline | Improved | Change |
+|---|---:|---:|---:|
+| ID-5 validation pooled Dice, 660 slices | 0.804001 | 0.819091 | +1.509 pp |
+| ID-5 test pooled Dice, 540 slices | 0.803655 | 0.843050 | +3.939 pp |
+| ID-5 test pooled IoU | 0.671759 | 0.728683 | +5.692 pp |
+| Six-ID test mean of pooled Dice | 0.917867 | 0.924320 | +0.645 pp |
+| ID-5 test false negatives, pixels | 7,357 | 5,394 | -1,963 |
+| ID-5 test false positives, pixels | 18,383 | 14,951 | -3,432 |
+| Parameters | 1,962,422 | 3,187,746 | 1.624x |
+| Local RTX 4070 model forward, ms/slice | 1.605100 | 4.674550 | 2.912x |
+| A100 peak allocated training memory, GiB | 0.119952 | 0.301517 | 2.514x |
+
+**Where it is better:** fewer missed ID-5 target pixels and fewer extra ID-5 pixels across the full test cohort, consistent with its higher Dice and IoU. True positives increase from 52,678 to 54,641 over the same 60,035 reference ID-5 pixels. Pooled ID-5 Dice also improves for each of the three patients:
+
+| Test patient | Baseline ID-5 Dice | Improved ID-5 Dice | Change (pp) |
+|---|---:|---:|---:|
+| 40 | 0.805732 | 0.843235 | +3.750 |
+| 41 | 0.818287 | 0.820786 | +0.250 |
+| 42 | 0.789606 | 0.853784 | +6.418 |
+
+**Where it is worse and what it costs:** test ID-3 Dice decreases by 0.604 pp and ID-4 by 1.033 pp. Six-ID mean validation Dice decreases slightly, by 0.049 pp, while the ID-5 validation score increases by 1.509 pp. Improved uses more parameters and allocator memory and has a 2.912x longer local model-forward time. Residual context and multi-scale features are plausible contributors to the ID-5 gain, but the experiment compares complete architectures and cannot isolate their causal contributions. There is one training seed and only three test patients; no statistical or clinical superiority is claimed.
+
+The comparison uses the same supplied patient splits, preprocessing, loss and 20-epoch training budget. Each model's checkpoint was selected by minimum validation loss before test use (baseline epoch 9; Improved epoch 20), then kept fixed for all three full test passes. These are repeats of inference, not three trained models. Anatomical interpretation after the tutor discussion did not change numerical labels, select a favorable checkpoint or trigger training on test results.
 
 ## Data and preprocessing
 
@@ -38,7 +79,7 @@ Patient IDs are disjoint. This respects the supplied patient-level partition and
 
 The frozen experiment uses per-slice z-score normalization over all image pixels with float64 summary statistics and a finite guard for constant images. This handles slice intensity scale without fitting statistics to validation or test cohorts. It may discard absolute intensity information; this choice was shared by both architectures and was not ablated. Training applies a paired last-axis flip with probability 0.5; validation and test use no augmentation. Image and mask receive the same transform.
 
-Native dimensions are preserved. Training includes 11,400 slices at 256x128 and 60 at 256x144. `NativeShapeBatchSampler` groups equal shapes and retains incomplete batches, so every slice and pixel contributes without resizing or dropping samples. Prediction NIfTI exports copy the reference affine/header; qualitative analysis additionally checks selected image/mask affine agreement. Native array orientation is not assigned an anatomical plane, base or apex. Two sampled NIfTI headers had empty descriptive metadata; that limited audit did not resolve anatomy.
+Native dimensions are preserved. Training includes 11,400 slices at 256x128 and 60 at 256x144. `NativeShapeBatchSampler` groups equal shapes and retains incomplete batches, so every slice and pixel contributes without resizing or dropping samples. Prediction NIfTI exports copy the reference affine/header; qualitative analysis additionally checks selected image/mask affine agreement. Native array orientation is not assigned an anatomical plane, base or apex. Two sampled NIfTI headers had empty descriptive metadata; that initial metadata audit did not resolve anatomy. The later image-based ID-5 interpretation is documented above, without treating the identity affine as recovered physical orientation.
 
 ## Models, objective and metrics
 
@@ -76,7 +117,7 @@ Reviewed on 27 October 2026. Both models completed the frozen 20-epoch protocol 
 
 ### Pooled numeric-label overlap
 
-Each Dice/IoU value below is recomputed from the confusion matrix summed over all 660 validation slices. Changes are Improved minus baseline in percentage points (pp). Numeric IDs remain unassigned to anatomy.
+Each Dice/IoU value below is recomputed from the confusion matrix summed over all 660 validation slices. Changes are Improved minus baseline in percentage points (pp). The original numeric IDs are retained. ID 5 is interpreted as prostate in the illustrated 29 October analysis; other structures remain supporting visual interpretations.
 
 | ID | Baseline Dice | Improved Dice | Dice change (pp) | Baseline IoU | Improved IoU | IoU change (pp) |
 |---|---:|---:|---:|---:|---:|---:|
@@ -109,7 +150,7 @@ Patient 39 contributes 480/660 slices (72.73%); each other patient contributes 6
 - Patient 38, label 3: Dice **0.795200 -> 0.611632** (-18.357 pp). This is the largest patient/label decline and needs image-level error analysis.
 - Patient 37, label 4: **0.856800 -> 0.786273** (-7.053 pp), despite the small pooled label-4 improvement.
 - Patient 36, label 5: **0.772585 -> 0.894256** (+12.167 pp). The pooled label-5 gain is not an improvement for every patient; patients 38 and 39 slightly decline.
-- These observations informed four actual failure examples and one improvement example, now documented with MRI, ground truth, predictions and TP/FP/FN overlays in [ERROR_ANALYSIS.md](ERROR_ANALYSIS.md). Anatomical mapping remains unverified.
+- These observations informed four actual failure examples and one improvement example, now documented with MRI, ground truth, predictions and TP/FP/FN overlays in [ERROR_ANALYSIS.md](ERROR_ANALYSIS.md). The subsequent image-based ID-5 interpretation and its limits are documented above.
 
 All patient/label values: [patient metrics CSV](results/comparison_v1_704715/patient_metrics_comparison.csv).
 
@@ -160,13 +201,13 @@ python compare_results.py \
 
 Use a new output directory. The original committed runtime snapshot and protocol must be preserved. The committed summaries/CSVs/PNGs contain derived validation records; MRI data and checkpoint weights remain outside Git.
 
-The test set remains untouched by the comparison runner. Sourced label anatomy and tutor feasibility check-off are still outstanding. The fixed-model local held-out results are reported in the separate test section below. Four actual validation failures and one improvement example have since been rendered and reviewed; see [ERROR_ANALYSIS.md](ERROR_ANALYSIS.md) for the declared selection rules, evidence and limitations. Four validation patients and one training seed limit generalization claims; no statistical or clinical superiority is established. Source and filename/size hashes support record consistency but do not prove byte-identical data contents. The initial validation bundles excluded weights, so their local audit checked saved records rather than re-running validation. Both original checkpoints were later downloaded, verified and reloaded for the separate local held-out test.
+The test set remains untouched by the comparison runner. Tutor check-off has since been completed, according to the student on 29 October. The image-based anatomical interpretation is documented above; no official numerical dictionary was recovered. The fixed-model local held-out results are reported in the separate test section below. Four actual validation failures and one improvement example have since been rendered and reviewed; see [ERROR_ANALYSIS.md](ERROR_ANALYSIS.md) for the declared selection rules, evidence and limitations. Four validation patients and one training seed limit generalization claims; no statistical or clinical superiority is established. Source and filename/size hashes support record consistency but do not prove byte-identical data contents. The initial validation bundles excluded weights, so their local audit checked saved records rather than re-running validation. Both original checkpoints were later downloaded, verified and reloaded for the separate local held-out test.
 
 AI assistance covered report-code scaffolding, command suggestions, numerical consistency checks, plot review and drafting this analysis. The student executed the commands and shared the outputs and files; the student remains responsible for reviewing, understanding and explaining the submitted work.
 
 ## Real validation error analysis
 
-Reviewed on 27 October 2026. Five real validation slices show four failure examples and one improvement example. All labels remain numeric because their anatomical mapping is unconfirmed. These are deliberately selected diagnostic examples, not a representative sample or held-out test evaluation. Overall scores remain in [VALIDATION_RESULTS.md](VALIDATION_RESULTS.md).
+Reviewed on 27 October 2026. Five real validation slices show four failure examples and one improvement example. These historical validation figures retain their original numeric labels. The later image-based ID-5 interpretation is documented above. These are deliberately selected diagnostic examples, not a representative sample or held-out test evaluation. Overall scores remain in [VALIDATION_RESULTS.md](VALIDATION_RESULTS.md).
 
 ### Method and provenance
 
@@ -252,9 +293,9 @@ This deliberately selected improvement example provides context for the pooled I
 
 ### Engineering interpretation and limits
 
-The engineering dilemma is whether the extra model complexity and resource cost produces contours that need less human correction. This validation run presents mixed evidence: larger omissions and expansions in some cases, a complete small-region miss in both models, and an improvement in another case. The model name, lower validation loss or high aggregate scores cannot replace image-level review. Anatomy is unverified, so these images cannot rank clinical severity or establish prostate base/apex accuracy.
+The engineering dilemma is whether the extra model complexity and resource cost produces contours that need less human correction. This validation run presents mixed evidence: larger omissions and expansions in some cases, a complete small-region miss in both models, and an improvement in another case. The model name, lower validation loss or high aggregate scores cannot replace image-level review. The image-based ID-5 interpretation does not establish clinical severity or prostate base/apex accuracy from these selected validation examples.
 
-The five examples are selected extremes, include correlated slices from four validation patients, and reuse one training seed. They cannot estimate error prevalence, confidence intervals or held-out generalization. Explanations such as low contrast, class imbalance or missing 3D context remain candidate explanations requiring further evidence. The local held-out evaluation is now reported separately; sourced anatomical mapping remains outstanding; the tutor feasibility check-off is still pending.
+The five examples are selected extremes, include correlated slices from four validation patients, and reuse one training seed. They cannot estimate error prevalence, confidence intervals or held-out generalization. Explanations such as low contrast, class imbalance or missing 3D context remain candidate explanations requiring further evidence. The local held-out evaluation is now reported separately; the later illustrated ID-5 interpretation is image-based, and the student reports tutor check-off completed on 29 October.
 
 ### Reproduce
 
@@ -283,7 +324,7 @@ Both validation-selected models completed three full test passes on all 540 supp
 - The original A100 held-out runner was committed as `bc601d92de5fb3da982b43d96de34afcd544a94c`. The local orchestration is identified by its exact source SHA256, not a fabricated Git commit. Actual execution logs/records remain in the local evidence directory.
 - The downloaded accounting records show remote job 705243 already COMPLETED / 0:0 before the attempted cancellation. Its result files were not collected or reviewed. All numerical results here come from the separately executed local GPU run.
 - All 1,080 local test image/mask files were content-hashed and rechecked around the evaluation stages. The transferred archive SHA256 matched the value printed on Rangpur. Patient separation from both training and validation passed.
-- Numeric labels 0-5 remain unassigned to anatomy. The prostate-specific acceptance criterion and compulsory tutor feasibility check-off remain unresolved.
+- Numeric IDs 0-5 are preserved. This revision interprets ID 5 as prostate from image evidence and reports its task-specific comparison above; the student reports tutor feasibility check-off completed on 29 October.
 
 ### Pooled overlap
 
@@ -298,7 +339,7 @@ Confusion counts are summed over the full cohort before overlap is computed. Cha
 | 4 | 0.838244 | 0.827911 | -1.033 | 0.721531 | 0.706355 |
 | 5 | 0.803655 | 0.843050 | +3.939 | 0.671759 | 0.728683 |
 
-The descriptive mean over all six pooled-label Dice values is **0.917867 baseline versus 0.924320 Improved** (+0.645 pp). IDs 0, 1, 2 and 5 improve; IDs 3 and 4 decline. This all-ID mean does not designate a primary anatomical target or establish statistical/clinical superiority.
+The descriptive mean over all six pooled-label Dice values is **0.917867 baseline versus 0.924320 Improved** (+0.645 pp). IDs 0, 1, 2 and 5 improve; IDs 3 and 4 decline. This all-ID mean is a secondary descriptive summary; the image-based ID-5 target comparison is reported separately. Neither establishes statistical/clinical superiority.
 
 ![Full-test pooled overlap](results/test_local_705243/heldout_metrics_comparison.png)
 
@@ -333,7 +374,7 @@ Both local forward summaries are below the proposed 100 ms per-slice target in t
 
 ### Interpretation and limits
 
-The fixed-model test run shows a modest all-ID mean gain with specific regressions and higher forward cost. The ID-3 decline appears in both validation and test. The results do not support an unconditional recommendation to replace the baseline. A decision about prostate contours requires independently confirmed anatomy and review of the relevant errors; the existing five qualitative examples are explicitly validation examples, not test case selection.
+The fixed-model test run shows a modest all-ID mean gain with specific regressions and higher forward cost. The ID-3 decline appears in both validation and test. The results do not support an unconditional recommendation to replace the baseline. The image-based ID-5 interpretation allows a task-specific coursework comparison, with its inference limits stated above. The existing five qualitative failure examples remain validation examples; new anatomy illustrations are explicitly post-hoc test images and are not used for model tuning.
 
 The same weights were reused in all three passes. These are repeat timing checks, not three training seeds, confidence intervals or independent replications. Test results were not used to retrain, tune, choose thresholds or change checkpoints. A new model-development study would require a separate evaluation design.
 
@@ -348,13 +389,13 @@ AI assistance covered local environment setup, transfer instructions, guarded ex
 
 ## Engineering recommendation
 
-For the measured validation workload, retain the baseline as the simpler reference implementation. Added complexity did not produce a higher six-label pooled mean, and ID-3 overlap declined while memory and latency increased. Improved's gains on IDs 2 and 5 justify investigation, but do not establish a better prostate contouring system. The completed local test run increases the six-label mean from 0.917867 to 0.924320, but IDs 3 and 4 decline and Improved is 2.912x slower in model-forward timing. The same fixed checkpoints were used throughout. This remains a conditional accuracy/resource trade-off, with no confirmed prostate-specific result.
+Under the image-based prostate = ID 5 interpretation, Improved increases pooled test Dice from **0.803655 to 0.843050 (+3.939 pp)**, while reducing both FP and FN pixels. Its six-ID test mean also increases, but IDs 3 and 4 decline; the six-ID validation mean is slightly lower. Improved is therefore a task-specific accuracy/resource trade-off rather than a uniform replacement: it uses more parameters, 2.514x peak allocated training memory and 2.912x local model-forward time. Retain the baseline as the simpler fallback. The anatomical mapping remains an image-based inference, with no official dictionary recovered.
 
-Human review should inspect both omitted regions and outward contour expansion, with explicit attention to small regions. The examples demonstrate that complete reference coverage can coexist with excessive false positives and that a high pooled score can hide complete slice-level misses. Anatomy remains unverified, so clinical severity and prostate base/apex claims cannot be ranked. Adjacent-slice context, class-aware sampling or other loss designs are possible future validation studies; none is credited as an implemented improvement here. Test results must not tune those changes.
+Human review must still inspect omitted regions, outward expansion and small targets. A high pooled score can hide complete slice-level misses. The selected examples do not establish clinical severity or base/apex accuracy. Adjacent-slice context, class-aware sampling and other losses are possible future validation studies, not implemented or proven causes of improvement here. Future development must not tune to these test results.
 
 ## Feasibility Review
 
-**Project:** HipMRI 2D Improved U-Net | **Student:** s4986405 | **Initial review:** 26 October 2026. **Status:** written review prepared; compulsory tutor consultation/check-off remains incomplete. The following preserves the proposed scope and distinguishes subsequent evidence.
+**Project:** HipMRI 2D Improved U-Net | **Student:** s4986405 | **Initial review:** 26 October 2026. **Updated 29 October 2026:** the student reports completing the compulsory tutor consultation/check-off. The original proposal is retained below with subsequent evidence distinguished; no approval before the reported consultation is claimed.
 
 **User need and dilemma.** An imaging specialist needs an offline contour draft for human correction. The proposed investigation asks whether a more complex 2D architecture reduces prostate/adjacent-organ boundary errors enough to justify added runtime and memory. Anatomical evaluation depends on confirming numeric label semantics independently.
 
@@ -362,9 +403,9 @@ Human review should inspect both omitted regions and outward contour expansion, 
 
 **Preliminary evidence.** Initial filename audits found 31/4/3 disjoint patients and 11,460/660/540 slices. One real MRI/mask pair loaded at 256x128. The untrained baseline produced finite six-channel logits; CPU shape/gradient, metric and small pipeline checks passed. This early evidence did not establish accuracy. Later full training, validation and five real diagnostic overlays are documented above; they do not constitute tutor approval.
 
-**Five proposed acceptance criteria.** (1) Preserve patient separation and native image/mask alignment. (2) Target pooled prostate test Dice >=0.75, while reporting all-class overlap and patient means; this target remains unassessable until anatomy is independently confirmed, and primary aggregation was not tutor-confirmed. (3) Compare both models on the same held-out patients and inspect 3-5 actual boundary failures with FP/FN overlays. (4) Target whole-device peak VRAM <=12 GiB and median synchronized model forward <=100 ms per 256x128 slice at batch size 1, plus per-case timing. Allocator peaks do not verify the whole-device limit; validation forward summaries meet the latency target only in their stated scope. (5) Record dependencies, seeds, configurations and validation-only checkpoint selection before test use.
+**Five proposed acceptance criteria.** (1) Preserve patient separation and native image/mask alignment. (2) Target pooled prostate test Dice >=0.75, while reporting all-class overlap and patient means; the illustrated ID-5 interpretation gives pooled test Dice 0.843050, exceeding 0.75. The mapping is image-based and the pooled aggregation was not separately confirmed by the tutor. (3) Compare both models on the same held-out patients and inspect 3-5 actual boundary failures with FP/FN overlays. (4) Target whole-device peak VRAM <=12 GiB and median synchronized model forward <=100 ms per 256x128 slice at batch size 1, plus per-case timing. Allocator peaks do not verify the whole-device limit; validation forward summaries meet the latency target only in their stated scope. (5) Record dependencies, seeds, configurations and validation-only checkpoint selection before test use.
 
-**Risks, budget and fallback.** Risks include small patient cohorts, imbalance, unverified anatomy/slice ordering, absent 3D context and imperfect reproducibility. The proposed budget was two one-hour GPU pilots and two training runs capped at four hours each. Both formal training tasks completed within that cap; the fixed-model test job requests 30 minutes on one GPU. The baseline remains the fallback for an unfavorable accuracy/resource trade-off. Tutor check-off and anatomical mapping still require external confirmation; no retrospective approval is claimed.
+**Risks, budget and fallback.** Risks include small patient cohorts, imbalance, unverified anatomy/slice ordering, absent 3D context and imperfect reproducibility. The proposed budget was two one-hour GPU pilots and two training runs capped at four hours each. Both formal training tasks completed within that cap; the fixed-model test job requests 30 minutes on one GPU. The baseline remains the fallback for an unfavorable accuracy/resource trade-off. The student reports tutor check-off completed on 29 October. ID 5 is inferred as prostate from the image evidence above; the inference is not represented as an official numerical dictionary.
 
 ## Code structure and reproducibility
 
@@ -393,7 +434,7 @@ OpenAI ChatGPT and Codex provided substantial assistance with model/data/trainin
 
 The student executed the local WSL and Rangpur commands and supplied terminal outputs and downloaded result bundles. With AI assistance, verification covered input rejection and pairing tests, patient separation, hand-calculated overlap examples, finite gradients, checkpoint save/reload checks, native-shape coverage, real CPU/GPU smoke runs, matched full-training logs, JSON/CSV numerical recomputation, source/checkpoint/artifact consistency, and visual review of three validation comparison figures and five real error overlays. Nine original held-out tests plus nine local migration checks passed in the new Windows environment. Codex executed the authorized local setup, GPU feasibility checks and real six-pass held-out evaluation; all result/CSV audits passed and both test figures were visually reviewed. The student executed the remote packaging/download commands and provided the inputs. Local execution is recorded explicitly, rather than attributing those agent-run commands to the student.
 
-These checks do not establish an independent manual audit of every line or independent replication. The student remains responsible for reviewing, understanding, correcting and explaining the code, formulas, references, results and disclosures. AI-supported debugging included correcting heterogeneous-slice batching, CSV line endings and an initially empty Git archive; earlier failed attempts are not counted as completed experiments. Current held-out measurements are from the completed local evaluation; remote held-out result files were not reviewed. Anatomical mapping and tutor check-off remain unresolved.
+These checks do not establish an independent manual audit of every line or independent replication. The student remains responsible for reviewing, understanding, correcting and explaining the code, formulas, references, results and disclosures. AI-supported debugging included correcting heterogeneous-slice batching, CSV line endings and an initially empty Git archive; earlier failed attempts are not counted as completed experiments. Current held-out measurements are from the completed local evaluation; remote held-out result files were not reviewed. The student reports tutor check-off completed on 29 October. Codex additionally assisted with image-based ID-5 interpretation, fixed-checkpoint illustrative predictions and the direct baseline comparison in this revision; the student remains responsible for validating and explaining the inference.
 
 ## References
 
@@ -402,3 +443,7 @@ These checks do not establish an independent manual audit of every line or indep
 [2] Isensee, F. et al. (2018). *Brain Tumor Segmentation and Radiomics Survival Prediction: Contribution to the BRATS 2017 Challenge*. [Paper](https://arxiv.org/abs/1802.10508). Architectural inspiration; implementation differences are stated above.
 
 [3] Liu, S., Dowling, J. A., Engstrom, C., Greer, P. B., Crozier, S. and Chandra, S. S. (2020). *Manipulating Medical Image Translation with Manifold Disentanglement*. [Paper](https://arxiv.org/abs/2011.13615). Dataset-related context, not proof of the numerical label mapping.
+
+[4] ACR, ESUR and AdMeTech Foundation (2015). *PI-RADS v2*, anatomy and Figure 1. [Consensus guideline](https://pmc.ncbi.nlm.nih.gov/articles/PMC6467207/). Anatomical context only; it does not assign IDs in the course dataset.
+
+[5] *Normal anatomic relationship between urethral sphincter complex and zones of prostrate in young Chinese males on MRI* (2015). [MRI anatomy study](https://pmc.ncbi.nlm.nih.gov/articles/PMC4659132/). Spatial anatomy context, not a course label dictionary.

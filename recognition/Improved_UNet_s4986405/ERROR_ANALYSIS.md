@@ -1,5 +1,7 @@
 # Exploratory validation error analysis
 
+**29 October update:** the student reports compulsory tutor check-off completed. The original numeric evidence below is retained as a historical record; [README](README.md) and [anatomical analysis](ANATOMICAL_LABEL_ANALYSIS.md) document the subsequent image-based prostate = ID 5 interpretation and direct baseline comparison.
+
 Reviewed on 27 October 2026. Five real validation slices show four failure examples and one improvement example. All labels remain numeric because their anatomical mapping is unconfirmed. These are deliberately selected diagnostic examples, not a representative sample or held-out test evaluation. Overall scores remain in [VALIDATION_RESULTS.md](VALIDATION_RESULTS.md).
 
 ## Method and provenance

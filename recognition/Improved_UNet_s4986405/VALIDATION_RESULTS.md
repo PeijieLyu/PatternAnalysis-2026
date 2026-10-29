@@ -1,5 +1,7 @@
 # Matched full-training validation results
 
+**29 October update:** the student reports compulsory tutor check-off completed. The original numeric evidence below is retained as a historical record; [README](README.md) and [anatomical analysis](ANATOMICAL_LABEL_ANALYSIS.md) document the subsequent image-based prostate = ID 5 interpretation and direct baseline comparison.
+
 Reviewed on 27 October 2026. Both models completed the frozen 20-epoch protocol and three full validation passes. Results are mixed: five numeric-label pooled Dice scores increased, but label 3 declined; the six-label mean is slightly lower for the Improved model. The Improved model also used more allocator memory and had a longer model-forward time. This experiment does not establish overall superiority or prostate-specific test accuracy.
 
 ## Protocol and evidence

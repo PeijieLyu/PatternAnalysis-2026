@@ -1,5 +1,7 @@
 # Reproducing the HipMRI comparison
 
+**29 October update:** the student reports compulsory tutor check-off completed. The original numeric evidence below is retained as a historical record; [README](README.md) and [anatomical analysis](ANATOMICAL_LABEL_ANALYSIS.md) document the subsequent image-based prostate = ID 5 interpretation and direct baseline comparison.
+
 This guide records the completed validation experiment and the submitted fixed-model test protocol. Commands that launch experiments are reference procedures for deliberate reproduction. Job 705243 is recorded as COMPLETED / 0:0, but its result files were not collected. The user-requested local fixed-model evaluation has completed; see TEST_RESULTS.md. Preserve its source snapshot, original model runtime and weights.
 
 ## Observed environment

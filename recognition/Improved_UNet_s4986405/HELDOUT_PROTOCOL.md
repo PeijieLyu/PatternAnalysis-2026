@@ -1,5 +1,7 @@
 # Frozen fixed-model held-out test protocol
 
+**29 October update:** the student reports compulsory tutor check-off completed. The original numeric evidence below is retained as a historical record; [README](README.md) and [anatomical analysis](ANATOMICAL_LABEL_ANALYSIS.md) document the subsequent image-based prostate = ID 5 interpretation and direct baseline comparison.
+
 Protocol `hipmri-heldout-numeric-v1`, dated 27 October 2026, is specified in
 `heldout_protocol.json` before the supplied test split is evaluated. It fixes
 both validation-selected models; it performs evaluation only.

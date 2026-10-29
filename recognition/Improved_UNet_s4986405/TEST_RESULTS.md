@@ -1,5 +1,7 @@
 # Full held-out test results on the local GPU
 
+**29 October tutor revision:** check-off completed as reported by the student; image-based analysis supports prostate = ID 5. Its test Dice improves from **0.803655 to 0.843050 (+3.939 pp; 4.90% relative gain)**. FP falls 18,383 to 14,951, FN falls 7,357 to 5,394. The anatomy inference and direct comparison are illustrated in [README](README.md) and [the label analysis](ANATOMICAL_LABEL_ANALYSIS.md). Original full-test metrics are unchanged.
+
 Both validation-selected models completed three full test passes on all 540 supplied test slices, using the same fixed weights and original evaluator source. The local run printed `Local fixed-model full held-out test comparison: PASS`; completed provenance, grouped metrics, input/source/weight consistency, repeated predictions and every CSV cell passed the saved-record audit. Both figures were visually checked.
 
 ## Scope and provenance
@@ -10,7 +12,7 @@ Both validation-selected models completed three full test passes on all 540 supp
 - The original A100 held-out runner was committed as `bc601d92de5fb3da982b43d96de34afcd544a94c`. The local orchestration is identified by its exact source SHA256, not a fabricated Git commit. Actual execution logs/records remain in the local evidence directory.
 - The downloaded accounting records show remote job 705243 already COMPLETED / 0:0 before the attempted cancellation. Its result files were not collected or reviewed. All numerical results here come from the separately executed local GPU run.
 - All 1,080 local test image/mask files were content-hashed and rechecked around the evaluation stages. The transferred archive SHA256 matched the value printed on Rangpur. Patient separation from both training and validation passed.
-- Numeric labels 0-5 remain unassigned to anatomy. The prostate-specific acceptance criterion and compulsory tutor feasibility check-off remain unresolved.
+- Numeric IDs 0-5 are preserved. This revision interprets ID 5 as prostate from image evidence and reports its task-specific comparison above; the student reports tutor feasibility check-off completed on 29 October.
 
 ## Pooled overlap
 
@@ -25,7 +27,7 @@ Confusion counts are summed over the full cohort before overlap is computed. Cha
 | 4 | 0.838244 | 0.827911 | -1.033 | 0.721531 | 0.706355 |
 | 5 | 0.803655 | 0.843050 | +3.939 | 0.671759 | 0.728683 |
 
-The descriptive mean over all six pooled-label Dice values is **0.917867 baseline versus 0.924320 Improved** (+0.645 pp). IDs 0, 1, 2 and 5 improve; IDs 3 and 4 decline. This all-ID mean does not designate a primary anatomical target or establish statistical/clinical superiority.
+The descriptive mean over all six pooled-label Dice values is **0.917867 baseline versus 0.924320 Improved** (+0.645 pp). IDs 0, 1, 2 and 5 improve; IDs 3 and 4 decline. This all-ID mean is a secondary descriptive summary; the image-based ID-5 target comparison is reported separately. Neither establishes statistical/clinical superiority.
 
 ![Full-test pooled overlap](results/test_local_705243/heldout_metrics_comparison.png)
 
@@ -60,7 +62,7 @@ Both local forward summaries are below the proposed 100 ms per-slice target in t
 
 ## Interpretation and limits
 
-The fixed-model test run shows a modest all-ID mean gain with specific regressions and higher forward cost. The ID-3 decline appears in both validation and test. The results do not support an unconditional recommendation to replace the baseline. A decision about prostate contours requires independently confirmed anatomy and review of the relevant errors; the existing five qualitative examples are explicitly validation examples, not test case selection.
+The fixed-model test run shows a modest all-ID mean gain with specific regressions and higher forward cost. The ID-3 decline appears in both validation and test. The results do not support an unconditional recommendation to replace the baseline. The image-based ID-5 interpretation allows a task-specific coursework comparison, with its inference limits stated above. The existing five qualitative failure examples remain validation examples; new anatomy illustrations are explicitly post-hoc test images and are not used for model tuning.
 
 The same weights were reused in all three passes. These are repeat timing checks, not three training seeds, confidence intervals or independent replications. Test results were not used to retrain, tune, choose thresholds or change checkpoints. A new model-development study would require a separate evaluation design.
 
